@@ -1,11 +1,11 @@
 # MaskTerial: A Foundation Model for Automated 2D Material Flake Detection
 
-![arXiv](https://img.shields.io/badge/arXiv-soon-b31b1b.svg)
+[![arXiv](https://img.shields.io/badge/arXiv-2412.09333-b31b1b.svg)](https://arxiv.org/abs/2412.09333)
 [![Database Demo Website](https://img.shields.io/badge/DataGen-Demo-blue)](https://datagen.uslu.tech)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![BibTeX](https://img.shields.io/badge/BibTeX-gray)](#Citing2DMatGMM)
+[![BibTeX](https://img.shields.io/badge/BibTeX-gray)](#CitingMaskTerial)
 
-After the paper is published this repository will host the code and related resources for the MaskTerial project, a robust Deep-Learning based model for real-time detection and classification of 2D material flakes.
+After the paper is accepted this repository will host the code and related resources for the MaskTerial project, a robust Deep-Learning based model for real-time detection and classification of 2D material flakes.
 
 ## Abstract
 
@@ -18,12 +18,20 @@ This results in a model that can to quickly adapt to new materials with as littl
 Furthermore, an uncertainty estimation model is used to finally classify the predictions based on optical contrast.
 We evaluate our method on eight different datasets comprising five different 2D materials and demonstrate significant improvements over existing techniques in the detection of low-contrast materials such as hexagonal boron nitride.
 
-## <a name="Citing2DMatGMM"></a>Citing MaskTerial
+## <a name="CitingMaskTerial"></a>Citing MaskTerial
 
 If you use our work or dataset in your research or find the code helpful, we would appreciate a citation to the original paper:  
 
 ```bibtex
-Coming soon
+@article{uslu2024maskterialfoundationmodelautomated,
+    title={MaskTerial: A Foundation Model for Automated 2D Material Flake Detection}, 
+    author={Jan-Lucas Uslu and Alexey Nekrasov and Alexander Hermans and Bernd Beschoten and Bastian Leibe and Lutz Waldecker and Christoph Stampfer},
+    year={2024},
+    eprint={2412.09333},
+    archivePrefix={arXiv},
+    primaryClass={cs.CV},
+    url={https://arxiv.org/abs/2412.09333}, 
+}
 ```
 
 ## Contact
