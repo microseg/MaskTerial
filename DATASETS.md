@@ -1,34 +1,39 @@
 # Datasets
 
-All Datasets are available through OneDrive and a Zenodo Repository.
-Uploading to Zenodo is still in progress, so some links may not be available yet.
+All Datasets are available on the [Zenodo Repository](https://zenodo.org/records/15765514).
 
 ## Datasets Overview
 
 ### Real Datasets
 
-| Dataset   | Training Images | Testing Images | Annotated Flakes | Zenodo Link |                                              OneDrive Link                                               |
-| --------- | --------------: | -------------: | ---------------- | :---------: | :------------------------------------------------------------------------------------------------------: |
-| GrapheneL |             425 |           1362 | 1 to 4 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnNcgUAAAABh13UKcpCQi0vuiVsx0hymw?e=vB8Ik6) |
-| GrapheneM |             325 |            357 | 1 to 4 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnOcgUAAAABqDP5Nh58BjZLbL5Tk1_Sow?e=26WNfH) |
-| GrapheneH |             438 |            480 | 1 to 4 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnPcgUAAAABJwlFY3R8to2OGTiz3knMmA?e=K2NaFd) |
-| WSe2      |              97 |             99 | 1 to 3 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnKcgUAAAAB9QYQfNIcVWrZYLaMh3N8gA?e=LvwujH) |
-| WSe2L     |              92 |            420 | 1 to 3 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnJcgUAAAABzsuT_tQcBrFWENPj-Tx7wA?e=XbH3Bc) |
-| MoSe2     |              97 |             63 | 1 to 2 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnIcgUAAAABz8RVX6rlUnCta-uO1i0Lfw?e=IiIerZ) |
-| WS2       |              53 |             94 | 1 layer          | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnHcgUAAAABTEjcKOg20_sF6kJf3_FVug?e=DMfuL2) |
-| hBN_Thin  |              73 |             62 | 1 to 3 layers    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnLcgUAAAABdU0IoEAPU4zlKjfnswhrWQ?e=nblWSX) |
+These datasets contain real images of 2D material flakes, annotated with their respective classes and layer counts.  
+The test and train images are form multiple different exfoliation runs, which are used to ensure that no data leakage occurs between the training and testing sets.
+
+| Dataset   | Training Images | Testing Images | Annotated Flakes |                                     Zenodo Link                                     |  
+| --------- | --------------: | -------------: | ---------------- | :---------------------------------------------------------------------------------: |
+| GrapheneL |             425 |           1362 | 1 to 4 layers    | [Download](https://zenodo.org/records/15765514/files/Real_GrapheneL.zip?download=1) |
+| GrapheneM |             325 |            357 | 1 to 4 layers    | [Download](https://zenodo.org/records/15765514/files/Real_GrapheneM.zip?download=1) |
+| GrapheneH |             438 |            480 | 1 to 4 layers    | [Download](https://zenodo.org/records/15765514/files/Real_GrapheneH.zip?download=1) |
+| WSe2      |              97 |             99 | 1 to 3 layers    |   [Download](https://zenodo.org/records/15765514/files/Real_WSe2.zip?download=1)    |
+| WSe2L     |              92 |            420 | 1 to 3 layers    |   [Download](https://zenodo.org/records/15765514/files/Real_WSe2L.zip?download=1)   |  
+| MoSe2     |              97 |             63 | 1 to 2 layers    |   [Download](https://zenodo.org/records/15765514/files/Real_MoSe2.zip?download=1)   |  
+| WS2       |              53 |             94 | 1 layer          |    [Download](https://zenodo.org/records/15765514/files/Real_WS2.zip?download=1)    |
+| hBN_Thin  |              73 |             62 | 1 to 3 layers    | [Download](https://zenodo.org/records/15765514/files/Real_hBN_Thin.zip?download=1)  |
 
 ### Synthetic Datasets
 
-| Dataset  | Training Images | Testing Images | Annotated Flakes | Zenodo Link |                                              OneDrive Link                                               |
-| -------- | --------------: | -------------: | ---------------- | :---------: | :------------------------------------------------------------------------------------------------------: |
-| Graphene |           42274 |            100 | 1 to 10 layers   | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnScgUAAAABs5io8tMbd7rd6oR-3aEChg?e=jgeB3x) |
-| CrI3     |           40338 |            100 | 1 to 10 layers   | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnQcgUAAAABnz2KIArn8JaU1UD8K8BLgg?e=A1XZmC) |
-| hBN      |           43511 |            100 | 1 to 10 layers   | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnRcgUAAAABru87oG9WrkClhtr6ZNa6Yg?e=JNCGrp) |
-| MoSe2    |           41645 |            100 | 1 to 10 layers   | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnTcgUAAAABI0kb7R9GQtJldlSBI8tRAw?e=6OoQeo) |
-| TaS2     |           42850 |            100 | 1 to 10 layers   | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnWcgUAAAABQiqz4MaCjbTwJ67IOroJqw?e=l5WbhP) |
-| WS2      |           42451 |            100 | 1 to 10 layers   | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnUcgUAAAABLut5e_85_wM16SQlm0wnpA?e=EHIqne) |
-| WSe2     |           41146 |            100 | 1 to 10 layer    | Coming Soon | [Download](https://1drv.ms/u/c/49cfd94bb20f5207/EQdSD7JL2c8ggEnVcgUAAAABAlxozE_7LLOqOx55OauJbg?e=piDBgl) |
+These images are synthetically generated using the [MaskTerial Synthetic Data Generator](https://github.com/Jaluus/Maskterial-Synthetic-Data).  
+Check out that repository for more information on how to generate your own synthetic data.
+
+| Dataset  | Training Images | Testing Images | Annotated Flakes |                                       Zenodo Link                                       |
+| -------- | --------------: | -------------: | ---------------- | :-------------------------------------------------------------------------------------: |
+| Graphene |           42274 |            100 | 1 to 10 layers   | [Download](https://zenodo.org/records/15765514/files/Synthetic_Graphene.zip?download=1) |  
+| CrI3     |           40338 |            100 | 1 to 10 layers   |   [Download](https://zenodo.org/records/15765514/files/Synthetic_CrI3.zip?download=1)   |
+| hBN      |           43511 |            100 | 1 to 10 layers   |   [Download](https://zenodo.org/records/15765514/files/Synthetic_hBN.zip?download=1)    |
+| MoSe2    |           41645 |            100 | 1 to 10 layers   |  [Download](https://zenodo.org/records/15765514/files/Synthetic_MoSe2.zip?download=1)   |
+| TaS2     |           42850 |            100 | 1 to 10 layers   |   [Download](https://zenodo.org/records/15765514/files/Synthetic_TaS2.zip?download=1)   |
+| WS2      |           42451 |            100 | 1 to 10 layers   |   [Download](https://zenodo.org/records/15765514/files/Synthetic_WS2.zip?download=1)    |
+| WSe2     |           41146 |            100 | 1 to 10 layer    |   [Download](https://zenodo.org/records/15765514/files/Synthetic_WSe2.zip?download=1)   |
 
 ## Structure of the MaskTerial Dataset
 

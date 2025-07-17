@@ -1,11 +1,15 @@
 # MaskTerial: A Foundation Model for Automated 2D Material Flake Detection
 
+<div align="center">
+
 [![ArXiv](https://img.shields.io/badge/ArXiv-2412.09333-b31b1b.svg)](https://arxiv.org/abs/2412.09333)
 [![DataGen Demo Website](https://img.shields.io/badge/DataGen-Demo-blue)](https://datagen.uslu.tech)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3900486.svg)](https://doi.org/10.5281/zenodo.14415557)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14415557.svg)](https://doi.org/10.5281/zenodo.14415557)
 [![BibTeX](https://img.shields.io/badge/BibTeX-gray)](#CitingMaskTerial)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1wirro3JP7GG0jylQpzMKpNT5hch4FcJa?usp=sharing)
+
+</div>
 
 <div style="max-width: 600px; margin: auto;">
 <img src="etc/hook_figure.png" alt="MaskTerial Logo" style="width: 100%; height: auto">
@@ -13,7 +17,20 @@
 
 This repository hosts the code and related resources for the MaskTerial project, a robust Deep-Learning based model for real-time detection and classification of 2D material flakes.
 
-The paper can be found on ArXiv: [MaskTerial: A Foundation Model for Automated 2D Material Flake Detection](https://arxiv.org/abs/2412.09333)
+The paper can be found on ArXiv: [MaskTerial: A Foundation Model for Automated 2D Material Flake Detection](https://arxiv.org/abs/2412.09333)  
+For citations, please refer to the [Citing MaskTerial](#CitingMaskTerial) section below.
+
+<!-- ArXiv Paper DOI: [10.48550/arXiv.2412.09333](https://doi.org/10.48550/arXiv.2412.09333)  
+Code DOI: [10.5281/zenodo.14415557](https://doi.org/10.5281/zenodo.14415557)  
+Dataset DOI: [10.5281/zenodo.15765514](https://doi.org/10.5281/zenodo.15765514)  
+Pretrained Models DOI: [10.5281/zenodo.15765516](https://doi.org/10.5281/zenodo.15765516) -->
+
+| Resource | Badge | DOI | Link |
+|----------|-------|-----|------|
+| Paper | [![ArXiv](https://img.shields.io/badge/ArXiv-2412.09333-b31b1b.svg)](https://arxiv.org/abs/2412.09333) | 10.48550/arXiv.2412.09333 | [ArXiv](https://arxiv.org/abs/2412.09333) |
+| Code | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14415557.svg)](https://doi.org/10.5281/zenodo.14415557) | 10.5281/zenodo.14415557 | [Zenodo](https://zenodo.org/records/14415557) |
+| Dataset | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15765514.svg)](https://doi.org/10.5281/zenodo.15765514) | 10.5281/zenodo.15765514 | [Zenodo](https://zenodo.org/records/15765514) |
+| Pretrained Models | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15765516.svg)](https://doi.org/10.5281/zenodo.15765516) | 10.5281/zenodo.15765516 | [Zenodo](https://zenodo.org/records/15765516) |
 
 ## Abstract
 
@@ -41,6 +58,12 @@ The paper comprises two repositories each containing a part of the project:
 
 - [**MaskTerial**](https://github.com/Jaluus/MaskTerial): The code for the model training, evaluation, and inference.
 - [**Maskterial-Synthetic-Data**](https://github.com/Jaluus/Maskterial-Synthetic-Data): The code for the synthetic data generation.
+
+## 🚀 Quickstart
+
+For a quick demo of the model, you can use the [Colab Notebook](https://colab.research.google.com/drive/1wirro3JP7GG0jylQpzMKpNT5hch4FcJa?usp=sharing).  
+We also provide an [example Jupyter Notebook](demo/demo_inference.ipynb) in the `demo` folder that demonstrates how to use the model for inference and evaluation.  
+Otherwise we provide an inference server and a frontend to try out the models and see how they work through docker.
 
 ## Installation
 
@@ -101,12 +124,6 @@ pip install -e MaskTerial_Repo/
 # If you want to use the Demo Script you may also want to install jupyter
 pip install jupyter
 ```
-
-## Quickstart
-
-For a quick demo of the model, you can use the [Colab Notebook](https://colab.research.google.com/drive/1wirro3JP7GG0jylQpzMKpNT5hch4FcJa?usp=sharing).  
-We also provide an [example Jupyter Notebook](demo/demo_inference.ipynb) in the `demo` folder that demonstrates how to use the model for inference and evaluation.  
-Otherwise we provide an inference server and a frontend to try out the models and see how they work through docker.
 
 ### Docker Environment
 
@@ -176,15 +193,14 @@ For instructions on how to evaluate the model, please refer to the [Evaluation G
 
 ## Model Zoo
 
-All Pretrained Models can be found on [Zenodo](https://zenodo.org/records/15765516).
-Otherwise check out the [Model Zoo](MODELZOO.md) for the specific download links.
+All Pretrained Models can be found on [Zenodo](https://zenodo.org/records/15765516).  
+Also check out the [Model Zoo](MODELZOO.md) for the specific download links.
 
 ## Datasets
 
-All Datasets can be found on [Zenodo](https://zenodo.org/uploads/15765514).  
-Currently the Repo is not yet up, but we are working on it, in the meantime you can find OneDrive links to the datasets in the [Dataset Guide](DATASETS.md).
-The guide also contains information on how to use the datasets and how to prepare the datasets for training and evaluation.
-
+All Datasets can be found on [Zenodo](https://zenodo.org/records/15765514).  
+For specific download links and inforamtion on the datasets check out the [Dataset Guide](DATASETS.md).  
+The guide also contains information on how to use the datasets and how to prepare the datasets for training and evaluation.  
 For information on how to generate synthetic data, please refer to the [MaskTerial Synthetic Data Repository](https://github.com/Jaluus/Maskterial-Synthetic-Data).
 
 ## <a name="CitingMaskTerial"></a>Citing MaskTerial
