@@ -402,7 +402,7 @@ async def train(
         cmd = [
             sys.executable,
             "-u",
-            "train_seg_model_terminal.py",
+            "train_segmentation_model.py",
             "--config-file",
             config_path,
             "--train-image-root",
