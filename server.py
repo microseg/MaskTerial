@@ -28,7 +28,13 @@ from maskterial.utils.inference_server_utils import (
 torch.set_float32_matmul_precision("medium")
 
 
-app = FastAPI()
+app = FastAPI(
+    title="MaskTerial API",
+    description="A Foundation Model for Automated 2D Material Flake Detection",
+    version="1.0.0",
+    openapi_version="3.0.2"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
