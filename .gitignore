@@ -17,9 +17,9 @@ data/models/postprocessing_models/L2/*
 data/models/segmentation_models/M2F/*
 !data/models/segmentation_models/M2F/.gitkeep
 
-data/models/*
-data/datasets/*
-data/*
+#data/models/*
+#data/datasets/*
+#data/*
 
 out
 metrics/
