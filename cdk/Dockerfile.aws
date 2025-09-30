@@ -1,0 +1,47 @@
+# 优化的AWS Dockerfile - 最小化镜像大小
+FROM pytorch/pytorch:2.5.1-cuda11.8-cudnn9-runtime AS base
+
+# 设置环境变量
+ENV TORCH_CUDA_ARCH_LIST="6.0;6.1;6.2;7.5;8.0;8.6;8.7;8.9"
+ENV FORCE_CUDA="1"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# 安装最小依赖
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /maskterial
+
+# 安装Python依赖
+COPY requirements_frozen.txt .
+RUN pip install --no-cache-dir -r requirements_frozen.txt
+
+# 安装特定依赖
+RUN pip install --no-cache-dir \
+    --extra-index-url https://miropsota.github.io/torch_packages_builder \
+    MultiScaleDeformableAttention==1.0+9b0651cpt2.5.1cu118
+
+RUN pip install --no-cache-dir \
+    git+https://github.com/facebookresearch/detectron2.git@8d85329aed8506ea3672e3e208971345973ea761
+
+# 复制应用代码
+COPY . .
+
+# 创建非root用户
+RUN useradd -m -u 1000 maskterial && chown -R maskterial:maskterial /maskterial
+USER maskterial
+
+# 暴露端口
+EXPOSE 8000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# 启动命令
+CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

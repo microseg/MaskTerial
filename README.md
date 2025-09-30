@@ -65,6 +65,19 @@ For a quick demo of the model, you can use the [Colab Notebook](https://colab.re
 We also provide an [example Jupyter Notebook](demo/demo_inference.ipynb) in the `demo` folder that demonstrates how to use the model for inference and evaluation.  
 Otherwise we provide an inference server and a frontend to try out the models and see how they work through docker.
 
+### 🌐 AWS Deployment (CDK)
+
+For production deployment on AWS, see the [`cdk/`](./cdk/) folder:
+
+```bash
+cd cdk
+npm install
+cdk bootstrap
+cdk deploy
+```
+
+**Cost**: ~$15-25/month with ECS Fargate + S3 + CloudFront
+
 ## Installation
 
 To install and use MaskTerial, you first need to install the required dependencies.
