@@ -8,10 +8,12 @@ import time
 import zipfile
 from typing import Literal
 
+from pathlib import Path
+
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 
 from maskterial.modeling.classification_models import AMM_head, GMM_head
 from maskterial.maskterial import MaskTerial
@@ -66,20 +68,59 @@ available_cls_models = check_available_models(cls_model_dir)
 available_seg_models = check_available_models(seg_model_dir)
 available_pp_models = check_available_models(pp_model_dir)
 
+frontend_dist_dir = Path(file_dir) / "maskterial-train-frontend" / "dist"
+frontend_index_path = frontend_dist_dir / "index.html"
 
-@app.get("/")
-async def check_server_state():
+
+def _server_state_payload() -> dict[str, object]:
     if server_state is not None:
         return server_state.to_dict()
+    return {"message": "No Models are loaded, try to run inference on the /predict endpoint"}
 
-    return "No Models are loaded, try to run inference on the /predict endpoint"
 
-
-@app.get("/status")
-async def check_status():
+def _status_message() -> str:
     if currently_training:
         return "Currently training, try again later"
     return "Ready for inference"
+
+
+if frontend_index_path.exists():
+    assets_path = frontend_dist_dir / "assets"
+    if assets_path.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_path), name="frontend-assets")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def serve_frontend_root() -> FileResponse:
+        return FileResponse(frontend_index_path)
+
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    async def serve_frontend_routes(full_path: str) -> FileResponse:
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = frontend_dist_dir / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(frontend_index_path)
+else:
+
+    @app.get("/")
+    async def serve_frontend_root() -> dict[str, object]:
+        return _server_state_payload()
+
+
+@app.get("/api/server-state")
+async def api_server_state() -> dict[str, object]:
+    return _server_state_payload()
+
+
+@app.get("/status")
+async def check_status() -> str:
+    return _status_message()
+
+
+@app.get("/api/status")
+async def check_status_api() -> str:
+    return _status_message()
 
 
 @app.get("/available_models")
@@ -97,6 +138,10 @@ async def get_models():
         },
     }
 
+
+@app.get("/api/available_models")
+async def get_models_api():
+    return await get_models()
 
 @app.post("/upload/amm")
 async def upload_amm(
@@ -445,3 +490,7 @@ async def train(
         shutil.rmtree(new_model_path)
         currently_training = False
         raise HTTPException(status_code=500, detail=f"Failed to train model: {str(e)}")
+
+
+
+

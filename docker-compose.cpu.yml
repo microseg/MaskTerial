@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.cpu
     volumes:
       - data_mount:/maskterial/data
     command: bash -c "python -m uvicorn server:app --host 0.0.0.0 --port 8000"
@@ -33,7 +33,7 @@ services:
       - VITE_M2F_TRAIN_URL=http://127.0.0.1:8000/api/train/m2f
     build:
       context: ./maskterial-train-frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.cpu
     restart: "no"
     volumes:
       - build_mount:/app/dist

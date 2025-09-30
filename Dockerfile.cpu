@@ -1,0 +1,30 @@
+
+FROM pytorch/pytorch:2.5.1-cpu
+
+# Keep Python behavior consistent
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Clean third-party apt sources and install system deps needed by OpenCV and build tooling
+RUN rm -f /etc/apt/sources.list.d/*.list &&     apt-get update &&     apt-get install -y --no-install-recommends wget curl ca-certificates sudo git bzip2 libx11-6 build-essential ffmpeg libsm6 libxext6 &&     rm -rf /var/lib/apt/lists/*
+
+WORKDIR /maskterial
+
+# Ensure latest pip tooling
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip setuptools wheel
+
+# Install CPU variants of heavy deps
+RUN --mount=type=cache,target=/root/.cache/pip pip install --extra-index-url https://miropsota.github.io/torch_packages_builder MultiScaleDeformableAttention==1.0+9b0651cpt2.5.1cpu
+RUN --mount=type=cache,target=/root/.cache/pip pip install --extra-index-url https://miropsota.github.io/torch_packages_builder detectron2==0.6+2a420edpt2.5.1cpu
+RUN --mount=type=cache,target=/root/.cache/pip pip install git+https://github.com/cocodataset/panopticapi.git@7bb4655548f98f3fedc07bf37e9040a992b054b0
+RUN --mount=type=cache,target=/root/.cache/pip pip install git+https://github.com/mcordts/cityscapesScripts.git@067792b80e446e809dd5516ee80d39fa92e18269
+
+# Reinstall PyTorch CPU wheels explicitly to ensure correctness
+RUN --mount=type=cache,target=/root/.cache/pip pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1
+
+COPY requirements_frozen.txt .
+RUN --mount=type=cache,target=/root/.cache/pip     --mount=type=bind,source=requirements_frozen.txt,target=/tmp/requirements_frozen.txt     pip install -r /tmp/requirements_frozen.txt
+
+COPY . .
+
+CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
