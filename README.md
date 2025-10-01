@@ -1,5 +1,5 @@
 # MaskTerial: A Foundation Model for Automated 2D Material Flake Detection
- 
+
 <div align="center">
 
 [![ArXiv](https://img.shields.io/badge/ArXiv-2412.09333-b31b1b.svg)](https://arxiv.org/abs/2412.09333)
