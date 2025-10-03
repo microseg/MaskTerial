@@ -161,7 +161,7 @@ docker compose -f docker-compose.cpu.yml up --build
 ```
 
 This will build the Docker image and start the inference server and frontend.
-You can then access the frontend at `http://localhost:8080`.
+You can then access the frontend at `http://localhost:8000`.
 It assumes that all the necessary models lie in the `/data` folder.
 To change that, go the the docker compose file and change the `volumes.data_mount.device` parameter.
 
