@@ -64,3 +64,6 @@ _darcs
 
 
 wandb
+
+# Git credentials
+.git-credentials

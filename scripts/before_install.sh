@@ -13,8 +13,9 @@ fi
 
 docker compose version
 
-# Create data directory if it doesn't exist
-mkdir -p /opt/MaskTerial/data
+# Sync S3 models to local data dir
+mkdir -p /opt/MaskTerial/data/models
+aws s3 sync s3://matsight-maskterial-models-v2/models /opt/MaskTerial/data/models --delete
 
 # ECR Login
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
