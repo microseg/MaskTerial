@@ -5,6 +5,12 @@ services:
       - /opt/maskterial/data:/maskterial/data
     command: bash -c "python -m uvicorn server:app --host 0.0.0.0 --port 8000"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
   nginx:
     image: public.ecr.aws/docker/library/nginx:1.27.2-alpine
