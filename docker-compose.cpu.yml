@@ -5,6 +5,15 @@ services:
       dockerfile: Dockerfile.cpu
     volumes:
       - data_mount:/maskterial/data
+    environment:
+      # AWS credentials for S3 and DynamoDB
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      # DynamoDB table name
+      - DYNAMODB_TABLE_NAME=${DYNAMODB_TABLE_NAME}
+      # S3 bucket name for image storage
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
     command: bash -c "python -m uvicorn server:app --host 0.0.0.0 --port 8000"
 
   nginx:
@@ -33,7 +42,7 @@ services:
       - VITE_M2F_TRAIN_URL=http://127.0.0.1:8000/api/train/m2f
     build:
       context: ./maskterial-train-frontend
-      dockerfile: Dockerfile.cpu
+      dockerfile: Dockerfile
     restart: "no"
     volumes:
       - build_mount:/app/dist

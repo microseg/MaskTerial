@@ -16,3 +16,5 @@ uvicorn
 python-multipart
 pycocotools
 pyqt5
+boto3
+pillow

@@ -2,8 +2,10 @@ import styles from "./TestInference.module.css";
 import { useState, useEffect } from "react";
 import { ImageDropzone } from "../components/ImageDropzone";
 import { CanvasImage } from "../components/CanvasImage";
-import { Paper, Select, Button } from "@mantine/core";
+import { Paper, Select, Button, ActionIcon, Text, ScrollArea, Tooltip, Badge, Group, Modal, TextInput, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { IconChevronLeft, IconPhoto, IconRefresh, IconDownload, IconEdit } from "@tabler/icons-react";
+import { getUserImages, saveImageMetadata, deleteImageById, refreshDownloadUrl, updateImageMetadata } from "../utils/apiClient";
 
 const formatModelData = (data) => {
   return Object.keys(data).reduce((acc, model) => {
@@ -16,6 +18,7 @@ export function TestInference() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentImage, setCurrentImage] = useState(null);
   const [currentImageURL, setCurrentImageURL] = useState(null);
+  const [uploadedImageData, setUploadedImageData] = useState(null);
   const [availableSegModels, setAvailableSegModels] = useState([]);
   const [availableClsModels, setAvailableClsModels] = useState([]);
   const [availablePPModels, setAvailablePPModels] = useState([]);
@@ -23,10 +26,74 @@ export function TestInference() {
   const [selectedClsModel, setSelectedClsModel] = useState(null);
   const [selectedPPModel, setSelectedPPModel] = useState(null);
   const [inferenceResults, setInferenceResults] = useState([]);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const [isLoadingGallery, setIsLoadingGallery] = useState(false);
+  const [galleryLastKey, setGalleryLastKey] = useState(null);
+  const [galleryHasMore, setGalleryHasMore] = useState(true);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingImage, setEditingImage] = useState(null);
+  const [editImageName, setEditImageName] = useState('');
 
-  const handleUserImageInput = (files) => {
-    setCurrentImageURL(URL.createObjectURL(files[0]));
+  const handleUserImageInput = async (files, uploadResult) => {
+    // Use local blob URL for immediate display
+    const localURL = URL.createObjectURL(files[0]);
+    
+    setCurrentImageURL(localURL);
     setCurrentImage(files[0]);
+    
+    // Store uploaded image data if available
+    if (uploadResult) {
+      setUploadedImageData(uploadResult);
+      console.log("Image uploaded to S3:", uploadResult);
+      
+      // Use backend proxy URL to avoid CORS
+      const proxyUrl = `/api/images/${uploadResult.imageID}/download`;
+      
+      // Add to gallery with proxy URL
+      const newImage = {
+        id: uploadResult.imageID || Date.now(),
+        imageID: uploadResult.imageID,
+        file: files[0],
+        url: proxyUrl,  // Use backend proxy URL
+        name: files[0].name,
+        download_url: proxyUrl,
+        s3Key: uploadResult.s3Key || uploadResult.key,
+        s3Url: uploadResult.imageURL,  // Keep S3 URL for reference
+        uploadResult: uploadResult
+      };
+      setUploadedImages((prev) => [newImage, ...prev]);
+      
+      console.log("Image added to gallery with proxy URL:", proxyUrl);
+    } else {
+      // No upload result, use local blob URL
+      const newImage = {
+        id: Date.now(),
+        file: files[0],
+        url: localURL,
+        name: files[0].name,
+        uploadResult: null
+      };
+      setUploadedImages((prev) => [newImage, ...prev]);
+      console.log("Image added to gallery with local URL");
+    }
+  };
+
+  const handleUploadSuccess = (result, file) => {
+    console.log("Upload successful:", result);
+    notifications.show({
+      title: "Upload Success",
+      message: `${file.name} uploaded successfully`,
+      color: "green",
+      autoClose: 3000,
+    });
+  };
+
+  const handleUploadError = (error, file) => {
+    console.error("Upload failed:", error);
+    // Can still display the image locally even if upload fails
+    setCurrentImageURL(URL.createObjectURL(file));
+    setCurrentImage(file);
   };
 
   const runInference = () => {
@@ -68,7 +135,7 @@ export function TestInference() {
         const data = await response.json();
         return { status, data };
       })
-      .then(({ status, data }) => {
+      .then(async ({ status, data }) => {
         console.log(data);
         if (status === 200) {
           notifications.show({
@@ -78,6 +145,33 @@ export function TestInference() {
             autoClose: false,
           });
           setInferenceResults(data);
+          
+          // Update DynamoDB if image has imageID (from S3 upload)
+          if (uploadedImageData?.imageID) {
+            try {
+              await updateImageMetadata(uploadedImageData.imageID, {
+                type: 'PROCESSED',
+                metadata: {
+                  inference_results: data,
+                  inference_at: new Date().toISOString(),
+                  segmentation_model: selectedSegModel,
+                  classification_model: selectedClsModel,
+                  postprocessing_model: selectedPPModel,
+                  flake_count: data.length,
+                  materials_detected: data.map(item => item.material_class).filter(Boolean)
+                }
+              });
+              
+              console.log('Image metadata updated with inference results');
+              
+              // Refresh gallery to show updated type
+              loadGalleryImages(true);
+              
+            } catch (error) {
+              console.error('Failed to update image metadata:', error);
+              // Don't show error to user, inference was successful
+            }
+          }
         } else {
           notifications.show({
             title: "Error",
@@ -92,7 +186,75 @@ export function TestInference() {
       });
   };
 
+  // Load gallery images from DynamoDB
+  const loadGalleryImages = async (reset = false) => {
+    if (isLoadingGallery || (!galleryHasMore && !reset)) return;
+    
+    setIsLoadingGallery(true);
+    try {
+      const result = await getUserImages({
+        limit: 10,
+        lastKey: reset ? null : galleryLastKey
+      });
+      
+      // Convert DynamoDB items to gallery format
+      const dbImages = result.items.map(item => {
+        // Use backend proxy URL to avoid CORS issues
+        const proxyUrl = `/api/images/${item.imageID}/download`;
+        
+        return {
+          id: item.imageID,
+          imageID: item.imageID,
+          url: proxyUrl,  // Use backend proxy URL (no CORS issues)
+          name: item.image_name,
+          createdAt: item.CreatedAt,
+          metadata: {
+            ...item.metadata,
+            type: item.type  // Include type from DynamoDB
+          },
+          download_url: proxyUrl,  // Use same proxy URL for download
+          s3Key: item.s3Key,
+          s3Url: item.image_url,  // Keep original S3 URL for reference
+          uploadResult: {
+            imageID: item.imageID,
+            imageURL: proxyUrl,
+            downloadURL: proxyUrl,
+            type: item.type,  // Include type
+            bucket: item.metadata?.s3_bucket,
+            key: item.s3Key || item.metadata?.s3_key
+          }
+        };
+      });
+      
+      if (reset) {
+        setUploadedImages(dbImages);
+      } else {
+        setUploadedImages(prev => [...prev, ...dbImages]);
+      }
+      
+      setGalleryLastKey(result.last_evaluated_key);
+      setGalleryHasMore(result.has_more);
+      
+    } catch (error) {
+      console.warn("DynamoDB gallery not available, using local mode:", error);
+      // Gracefully degrade to local-only mode
+      // Don't show error notification if it's just DynamoDB not being configured
+      if (!error.message.includes('Not Found') && !error.message.includes('404')) {
+        notifications.show({
+          title: "Info",
+          message: "Using local gallery mode",
+          color: "blue",
+          autoClose: 3000,
+        });
+      }
+      setGalleryHasMore(false);
+    } finally {
+      setIsLoadingGallery(false);
+    }
+  };
+
   useEffect(() => {
+    // Load available models
     fetch(import.meta.env.VITE_AVAILABLE_MODELS_URL)
       .then((response) => response.json())
       .then((data) => {
@@ -106,18 +268,13 @@ export function TestInference() {
           formatModelData(data.available_models.postprocessing_models)
         );
       });
+    
+    // Load gallery images from DynamoDB
+    loadGalleryImages(true);
   }, []);
 
   const ImageSection = (
     <>
-      {!currentImage && (
-        <div className={styles.dropzoneContainer}>
-          <ImageDropzone
-            handleImageUpload={handleUserImageInput}
-            className={styles.dropzone}
-          />
-        </div>
-      )}
       {currentImageURL && (
         <CanvasImage src={currentImageURL} flakes={inferenceResults} />
       )}
@@ -125,7 +282,7 @@ export function TestInference() {
   );
 
   const controlSection = (
-    <Paper p="md" shadow="xs" withBorder>
+    <Paper p="md" shadow="xs" withBorder className={styles.controlPaper}>
       <Select
         data={availableSegModels}
         label="Segmentation Model"
@@ -164,10 +321,528 @@ export function TestInference() {
     </Paper>
   );
 
-  return (
-    <div className={styles.gridContainer}>
-      <div className={styles.imageSection}>{ImageSection}</div>
-      <div className={styles.controlSection}>{controlSection}</div>
+  const dropzoneSection = (
+    <Paper p="md" shadow="xs" withBorder className={styles.dropzonePaper}>
+      <ImageDropzone
+        handleImageUpload={handleUserImageInput}
+        autoUpload={true}
+        onUploadSuccess={handleUploadSuccess}
+        onUploadError={handleUploadError}
+        showNotifications={true}
+        className={styles.dropzone}
+      />
+    </Paper>
+  );
+
+  const handleSelectImage = async (image) => {
+    setCurrentImageURL(image.url);
+    
+    // Check if image is PROCESSED and has inference results
+    const imageType = image.metadata?.type || image.uploadResult?.type;
+    const hasInferenceResults = image.metadata?.inference_results && 
+                                Array.isArray(image.metadata.inference_results) && 
+                                image.metadata.inference_results.length > 0;
+    
+    // If image is PROCESSED, load inference results from metadata
+    if (imageType === 'PROCESSED' && hasInferenceResults) {
+      notifications.show({
+        title: "Loading Results",
+        message: "Displaying saved inference results...",
+        color: "blue",
+        autoClose: 2000,
+      });
+      
+      // Set inference results from metadata
+      setInferenceResults(image.metadata.inference_results);
+      
+      console.log('Loaded inference results from DynamoDB:', {
+        flake_count: image.metadata.flake_count,
+        inference_at: image.metadata.inference_at,
+        models: {
+          segmentation: image.metadata.segmentation_model,
+          classification: image.metadata.classification_model
+        }
+      });
+      
+      // Also display the models that were used
+      notifications.show({
+        title: "Inference Results Loaded",
+        message: `Found ${image.metadata.flake_count || 0} flakes (${image.metadata.inference_at ? new Date(image.metadata.inference_at).toLocaleString() : 'Unknown time'})`,
+        color: "green",
+        autoClose: 5000,
+      });
+    } else {
+      // Clear inference results if not processed
+      setInferenceResults([]);
+    }
+    
+    // If image has a file object (locally uploaded), use it directly
+    if (image.file) {
+      setCurrentImage(image.file);
+      setUploadedImageData(image.uploadResult);
+    } else if (image.url) {
+      // If no file but has URL (from DynamoDB), download it
+      try {
+        // Fetch the image from URL
+        const response = await fetch(image.url);
+        if (!response.ok) {
+          throw new Error('Failed to fetch image');
+        }
+        
+        const blob = await response.blob();
+        
+        // Create a File object from the blob
+        const file = new File([blob], image.name || 'image.jpg', {
+          type: blob.type || 'image/jpeg'
+        });
+        
+        setCurrentImage(file);
+        setUploadedImageData(image.uploadResult);
+        
+        console.log('Image downloaded from URL and ready for inference');
+        
+      } catch (error) {
+        console.error('Failed to download image from URL:', error);
+        notifications.show({
+          title: "Error",
+          message: "Failed to load image from server",
+          color: "red",
+          autoClose: 3000,
+        });
+      }
+    }
+  };
+
+  const handleDeleteImage = async (imageId) => {
+    try {
+      // If image has imageID (from DynamoDB), delete from DB
+      const image = uploadedImages.find(img => img.id === imageId);
+      if (image && image.imageID) {
+        await deleteImageById(image.imageID);
+        notifications.show({
+          title: "Success",
+          message: "Image deleted successfully",
+          color: "green",
+          autoClose: 3000,
+        });
+      }
+      
+      // Remove from local state
+      setUploadedImages((prev) => prev.filter((img) => img.id !== imageId));
+      
+      // If deleted image is currently displayed, clear it
+      if (uploadedImages.find((img) => img.id === imageId && img.url === currentImageURL)) {
+        setCurrentImageURL(null);
+        setCurrentImage(null);
+        setInferenceResults([]);
+      }
+    } catch (error) {
+      console.error("Failed to delete image:", error);
+      notifications.show({
+        title: "Error",
+        message: "Failed to delete image",
+        color: "red",
+        autoClose: 3000,
+      });
+    }
+  };
+  
+  const handleRefreshGallery = () => {
+    loadGalleryImages(true);
+  };
+  
+  const handleLoadMoreImages = () => {
+    loadGalleryImages(false);
+  };
+  
+  const handleOpenEditModal = (image, e) => {
+    e.stopPropagation();
+    setEditingImage(image);
+    setEditImageName(image.name || '');
+    setEditModalOpen(true);
+  };
+  
+  const handleCloseEditModal = () => {
+    setEditModalOpen(false);
+    setEditingImage(null);
+    setEditImageName('');
+  };
+  
+  const handleSaveEdit = async () => {
+    if (!editingImage?.imageID) {
+      notifications.show({
+        title: "Error",
+        message: "Cannot update local-only image",
+        color: "red",
+        autoClose: 3000,
+      });
+      return;
+    }
+    
+    if (!editImageName.trim()) {
+      notifications.show({
+        title: "Error",
+        message: "Image name cannot be empty",
+        color: "red",
+        autoClose: 3000,
+      });
+      return;
+    }
+    
+    try {
+      await updateImageMetadata(editingImage.imageID, {
+        image_name: editImageName
+      });
+      
+      notifications.show({
+        title: "Success",
+        message: "Image name updated successfully",
+        color: "green",
+        autoClose: 3000,
+      });
+      
+      // Update local state
+      setUploadedImages(prev => prev.map(img => 
+        img.id === editingImage.id 
+          ? { ...img, name: editImageName }
+          : img
+      ));
+      
+      // Close modal
+      handleCloseEditModal();
+      
+    } catch (error) {
+      console.error("Failed to update image:", error);
+      notifications.show({
+        title: "Error",
+        message: error.message || "Failed to update image",
+        color: "red",
+        autoClose: 3000,
+      });
+    }
+  };
+  
+  const handleDownloadImage = async (image, e) => {
+    e.stopPropagation();
+    
+    try {
+      // Use download URL (permanent, no expiration check needed)
+      const downloadUrl = image.download_url || image.url;
+      
+      if (downloadUrl) {
+        // Open URL in new tab to download
+        window.open(downloadUrl, '_blank');
+        
+        notifications.show({
+          title: "Download Started",
+          message: "Image download started",
+          color: "green",
+          autoClose: 2000,
+        });
+      } else {
+        notifications.show({
+          title: "No URL",
+          message: "Download URL not available",
+          color: "orange",
+          autoClose: 3000,
+        });
+      }
+      
+    } catch (error) {
+      console.error("Failed to download image:", error);
+      notifications.show({
+        title: "Download Failed",
+        message: error.message || "Failed to download image",
+        color: "red",
+        autoClose: 3000,
+      });
+    }
+  };
+  
+
+  const gallerySection = (
+    <div className={`${styles.gallery} ${isGalleryOpen ? styles.galleryOpen : styles.galleryClosed}`}>
+      <div className={styles.galleryHeader}>
+        <div className={styles.galleryTitle}>
+          <IconPhoto size={20} />
+          <Text size="sm" fw={600}>Image Gallery</Text>
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={handleRefreshGallery}
+            loading={isLoadingGallery}
+            title="Refresh gallery"
+          >
+            <IconRefresh size={16} />
+          </ActionIcon>
+        </div>
+        <ActionIcon
+          variant="subtle"
+          onClick={() => setIsGalleryOpen(false)}
+          className={styles.closeButton}
+        >
+          <IconChevronLeft size={18} />
+        </ActionIcon>
+      </div>
+      <ScrollArea className={styles.galleryContent}>
+        {uploadedImages.length === 0 && !isLoadingGallery ? (
+          <Text size="sm" c="dimmed" ta="center" mt="md">
+            No images uploaded yet
+          </Text>
+        ) : (
+          <>
+            <div className={styles.imageGrid}>
+              {uploadedImages.map((image) => (
+                <div
+                  key={image.id}
+                  className={`${styles.galleryImageItem} ${
+                    currentImageURL === image.url ? styles.selectedImage : ""
+                  }`}
+                  onClick={() => handleSelectImage(image)}
+                >
+                  <img src={image.url} alt={image.name} className={styles.galleryImage} />
+                  <div className={styles.imageInfo}>
+                    <Text size="xs" truncate title={image.name}>
+                      {image.name}
+                    </Text>
+                    <Group gap="xs" mt={4}>
+                      {/* Type badge */}
+                      <Badge 
+                        size="xs" 
+                        variant="dot"
+                        color={image.metadata?.type === 'PROCESSED' || image.uploadResult?.type === 'PROCESSED' ? 'green' : 'gray'}
+                      >
+                        {image.metadata?.type || image.uploadResult?.type || 'UPLOADED'}
+                      </Badge>
+                      
+                      {/* Flake count if processed */}
+                      {(image.metadata?.type === 'PROCESSED' || image.uploadResult?.type === 'PROCESSED') && 
+                       image.metadata?.flake_count && (
+                        <Text size="xs" c="dimmed">
+                          {image.metadata.flake_count} flakes
+                        </Text>
+                      )}
+                    </Group>
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div className={styles.imageActions}>
+                    {/* Edit button */}
+                    {image.imageID ? (
+                      <Tooltip label="Edit Info">
+                        <ActionIcon
+                          size="xs"
+                          color="violet"
+                          variant="filled"
+                          onClick={(e) => handleOpenEditModal(image, e)}
+                        >
+                          <IconEdit size={12} />
+                        </ActionIcon>
+                      </Tooltip>
+                    ) : null}
+                    
+                    {/* Download button */}
+                    {image.download_url || image.imageID ? (
+                      <Tooltip label="Download">
+                        <ActionIcon
+                          size="xs"
+                          color="blue"
+                          variant="filled"
+                          onClick={(e) => handleDownloadImage(image, e)}
+                        >
+                          <IconDownload size={12} />
+                        </ActionIcon>
+                      </Tooltip>
+                    ) : null}
+                    
+                    {/* Delete button */}
+                    <Tooltip label="Delete">
+                      <ActionIcon
+                        size="xs"
+                        color="red"
+                        variant="filled"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteImage(image.id);
+                        }}
+                      >
+                        ×
+                      </ActionIcon>
+                    </Tooltip>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {galleryHasMore && (
+              <Button
+                variant="subtle"
+                size="xs"
+                fullWidth
+                mt="sm"
+                onClick={handleLoadMoreImages}
+                loading={isLoadingGallery}
+              >
+                Load More
+              </Button>
+            )}
+          </>
+        )}
+        {isLoadingGallery && uploadedImages.length === 0 && (
+          <Text size="sm" c="dimmed" ta="center" mt="md">
+            Loading images...
+          </Text>
+        )}
+      </ScrollArea>
     </div>
+  );
+
+  const toggleButton = !isGalleryOpen && (
+    <Paper className={styles.galleryToggleButton} shadow="sm" withBorder>
+      <Button
+        variant="subtle"
+        color="blue"
+        leftSection={<IconPhoto size={18} />}
+        onClick={() => setIsGalleryOpen(true)}
+        size="sm"
+      >
+        Gallery
+      </Button>
+    </Paper>
+  );
+
+  return (
+    <>
+      <div className={styles.gridContainer}>
+        <div className={styles.leftSection}>
+          {toggleButton}
+          {gallerySection}
+          <div className={styles.imageSection}>
+            {currentImageURL ? ImageSection : <div className={styles.emptyImagePlaceholder}>Upload an image to start</div>}
+          </div>
+        </div>
+        <div className={styles.controlSection}>
+          {controlSection}
+          {dropzoneSection}
+        </div>
+      </div>
+
+      {/* Edit Image Modal */}
+      <Modal
+        opened={editModalOpen}
+        onClose={handleCloseEditModal}
+        title="Edit Image Information"
+        size="md"
+      >
+        {editingImage && (
+          <Stack gap="md">
+            {/* Image Preview */}
+            <div style={{ textAlign: 'center' }}>
+              <img 
+                src={editingImage.url} 
+                alt={editingImage.name}
+                style={{ 
+                  maxWidth: '100%', 
+                  maxHeight: '200px', 
+                  borderRadius: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}
+              />
+            </div>
+            
+            {/* Image Name Input */}
+            <TextInput
+              label="Image Name"
+              placeholder="Enter image name"
+              value={editImageName}
+              onChange={(e) => setEditImageName(e.target.value)}
+              required
+            />
+            
+            {/* Display Image Info */}
+            <div>
+              <Text size="sm" fw={500} mb={8}>Image Information</Text>
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">Image ID:</Text>
+                  <Text size="xs" fw={500}>{editingImage.imageID}</Text>
+                </Group>
+                
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">Type:</Text>
+                  <Badge 
+                    size="xs" 
+                    color={editingImage.metadata?.type === 'PROCESSED' ? 'green' : 'gray'}
+                  >
+                    {editingImage.metadata?.type || 'UPLOADED'}
+                  </Badge>
+                </Group>
+                
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">Status:</Text>
+                  <Badge size="xs" color="blue">
+                    {editingImage.metadata?.status || 'active'}
+                  </Badge>
+                </Group>
+                
+                {editingImage.createdAt && (
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">Created:</Text>
+                    <Text size="xs" fw={500}>
+                      {new Date(editingImage.createdAt).toLocaleString()}
+                    </Text>
+                  </Group>
+                )}
+                
+                {editingImage.metadata?.flake_count && (
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">Flakes Detected:</Text>
+                    <Text size="xs" fw={500} c="green">
+                      {editingImage.metadata.flake_count}
+                    </Text>
+                  </Group>
+                )}
+                
+                {editingImage.metadata?.inference_at && (
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">Last Inference:</Text>
+                    <Text size="xs" fw={500}>
+                      {new Date(editingImage.metadata.inference_at).toLocaleString()}
+                    </Text>
+                  </Group>
+                )}
+                
+                {editingImage.metadata?.segmentation_model && (
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">Seg Model:</Text>
+                    <Text size="xs" fw={500}>
+                      {editingImage.metadata.segmentation_model}
+                    </Text>
+                  </Group>
+                )}
+                
+                {editingImage.metadata?.classification_model && (
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">Cls Model:</Text>
+                    <Text size="xs" fw={500}>
+                      {editingImage.metadata.classification_model}
+                    </Text>
+                  </Group>
+                )}
+              </Stack>
+            </div>
+            
+            {/* Action Buttons */}
+            <Group justify="flex-end" mt="md">
+              <Button variant="subtle" onClick={handleCloseEditModal}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit}>
+                Save Changes
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+    </>
   );
 }

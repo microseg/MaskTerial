@@ -17,3 +17,5 @@ uvicorn==0.32.0
 python-multipart==0.0.17
 numba==0.61.2
 pyqt5
+boto3==1.35.36
+pillow==11.0.0
