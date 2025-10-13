@@ -70,8 +70,8 @@
 }
 
 .galleryOpen {
-  width: 280px;
-  min-width: 280px;
+  width: 320px;
+  min-width: 320px;
 }
 
 .galleryClosed {
@@ -85,15 +85,17 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1em;
+  padding: 0.75em 1em;
   border-bottom: 1px solid #e9ecef;
-  background: #f8f9fa;
+  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .galleryTitle {
   display: flex;
   align-items: center;
   gap: 0.5em;
+  font-size: 0.9em;
 }
 
 .closeButton {
@@ -103,74 +105,95 @@
 .galleryContent {
   flex: 1;
   padding: 0.5em;
+  overflow-y: scroll !important; /* 强制显示滚动条 */
+  overflow-x: hidden;
+  min-height: 0; /* 确保flex子元素可以滚动 */
+  
+  /* Firefox滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: #888 #f1f1f1;
+}
+
+/* Webkit浏览器（Chrome, Safari, Edge）自定义滚动条样式 */
+.galleryContent::-webkit-scrollbar {
+  width: 8px !important;
+  display: block !important;
+}
+
+.galleryContent::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.galleryContent::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+  min-height: 30px; /* 确保滑块有最小高度 */
+}
+
+.galleryContent::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 .imageGrid {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
+  gap: 0.4em;
 }
 
 .galleryImageItem {
   position: relative;
-  border: 2px solid transparent;
-  border-radius: 8px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .galleryImageItem:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
+  border-color: #adb5bd;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
 }
 
 .selectedImage {
   border-color: #228be6 !important;
-  box-shadow: 0 4px 12px rgba(34, 139, 230, 0.3) !important;
+  box-shadow: 0 3px 10px rgba(34, 139, 230, 0.25) !important;
 }
 
 .galleryImage {
   width: 100%;
-  height: 150px;
+  height: 80px;
   object-fit: cover;
   display: block;
 }
 
 .imageInfo {
-  padding: 0.5em;
-  background: white;
+  padding: 0.4em 0.5em;
+  background: #fafafa;
   border-top: 1px solid #e9ecef;
   display: flex;
   flex-direction: column;
-  gap: 0.25em;
+  gap: 0.2em;
 }
 
 .imageActions {
   position: absolute;
-  top: 0.5em;
-  right: 0.5em;
+  top: 0.3em;
+  right: 0.3em;
   display: flex;
-  gap: 0.3em;
+  gap: 0.25em;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0.2em;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .galleryImageItem:hover .imageActions {
-  opacity: 1;
-}
-
-.deleteButton {
-  position: absolute;
-  top: 0.5em;
-  right: 0.5em;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.galleryImageItem:hover .deleteButton {
   opacity: 1;
 }
 

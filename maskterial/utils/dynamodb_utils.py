@@ -127,7 +127,19 @@ def query_user_images(
             # Convert Unix timestamp to ISO format if needed
             if isinstance(normalized_item['CreatedAt'], (int, float)):
                 from datetime import datetime
-                normalized_item['CreatedAt'] = datetime.fromtimestamp(normalized_item['CreatedAt']).isoformat()
+                timestamp = normalized_item['CreatedAt']
+                
+                # 检测时间戳格式 (秒 vs 毫秒)
+                # 如果时间戳 > 10000000000 (约2286年)，说明是毫秒级
+                if timestamp > 10000000000:
+                    timestamp = timestamp / 1000  # 转换为秒
+                
+                try:
+                    normalized_item['CreatedAt'] = datetime.fromtimestamp(timestamp).isoformat()
+                except (ValueError, OSError) as e:
+                    # 如果转换失败，保留原始值
+                    print(f"Warning: Invalid timestamp {timestamp}: {e}")
+                    normalized_item['CreatedAt'] = str(timestamp)
             
             items.append(normalized_item)
         

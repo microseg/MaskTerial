@@ -4,7 +4,7 @@ import { ImageDropzone } from "../components/ImageDropzone";
 import { CanvasImage } from "../components/CanvasImage";
 import { Paper, Select, Button, ActionIcon, Text, ScrollArea, Tooltip, Badge, Group, Modal, TextInput, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconChevronLeft, IconPhoto, IconRefresh, IconDownload, IconEdit } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconPhoto, IconRefresh, IconDownload, IconEdit } from "@tabler/icons-react";
 import { getUserImages, saveImageMetadata, deleteImageById, refreshDownloadUrl, updateImageMetadata } from "../utils/apiClient";
 
 const formatModelData = (data) => {
@@ -29,8 +29,9 @@ export function TestInference() {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [uploadedImages, setUploadedImages] = useState([]);
   const [isLoadingGallery, setIsLoadingGallery] = useState(false);
-  const [galleryLastKey, setGalleryLastKey] = useState(null);
-  const [galleryHasMore, setGalleryHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageTokens, setPageTokens] = useState([null]); // [null, token1, token2, ...]
+  const [hasNextPage, setHasNextPage] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingImage, setEditingImage] = useState(null);
   const [editImageName, setEditImageName] = useState('');
@@ -47,26 +48,21 @@ export function TestInference() {
       setUploadedImageData(uploadResult);
       console.log("Image uploaded to S3:", uploadResult);
       
-      // Use backend proxy URL to avoid CORS
-      const proxyUrl = `/api/images/${uploadResult.imageID}/download`;
+      // Refresh gallery to show the new image (jump to page 1)
+      // New uploads appear at the top (most recent first)
+      setTimeout(() => {
+        handleRefreshGallery();
+        notifications.show({
+          title: "Gallery Updated",
+          message: "Jumped to page 1 to show your new upload",
+          color: "blue",
+          autoClose: 2000,
+        });
+      }, 500); // Small delay to ensure upload is fully completed
       
-      // Add to gallery with proxy URL
-      const newImage = {
-        id: uploadResult.imageID || Date.now(),
-        imageID: uploadResult.imageID,
-        file: files[0],
-        url: proxyUrl,  // Use backend proxy URL
-        name: files[0].name,
-        download_url: proxyUrl,
-        s3Key: uploadResult.s3Key || uploadResult.key,
-        s3Url: uploadResult.imageURL,  // Keep S3 URL for reference
-        uploadResult: uploadResult
-      };
-      setUploadedImages((prev) => [newImage, ...prev]);
-      
-      console.log("Image added to gallery with proxy URL:", proxyUrl);
+      console.log("Gallery will refresh to show new upload");
     } else {
-      // No upload result, use local blob URL
+      // No upload result, use local blob URL (already created above)
       const newImage = {
         id: Date.now(),
         file: files[0],
@@ -164,8 +160,26 @@ export function TestInference() {
               
               console.log('Image metadata updated with inference results');
               
-              // Refresh gallery to show updated type
-              loadGalleryImages(true);
+              // Update local gallery state to show PROCESSED status immediately
+              setUploadedImages(prev => prev.map(img => 
+                img.imageID === uploadedImageData.imageID
+                  ? {
+                      ...img,
+                      metadata: {
+                        ...img.metadata,
+                        type: 'PROCESSED',
+                        flake_count: data.length,
+                        inference_at: new Date().toISOString(),
+                        segmentation_model: selectedSegModel,
+                        classification_model: selectedClsModel,
+                        postprocessing_model: selectedPPModel,
+                        inference_results: data
+                      }
+                    }
+                  : img
+              ));
+              
+              console.log('Gallery updated locally to show PROCESSED status');
               
             } catch (error) {
               console.error('Failed to update image metadata:', error);
@@ -186,15 +200,18 @@ export function TestInference() {
       });
   };
 
-  // Load gallery images from DynamoDB
-  const loadGalleryImages = async (reset = false) => {
-    if (isLoadingGallery || (!galleryHasMore && !reset)) return;
+  // Load gallery images from DynamoDB with pagination
+  const loadGalleryPage = async (pageNum) => {
+    if (isLoadingGallery) return;
     
     setIsLoadingGallery(true);
     try {
+      // Get token for this page (pageNum - 1 because array is 0-indexed)
+      const pageToken = pageTokens[pageNum - 1];
+      
       const result = await getUserImages({
-        limit: 10,
-        lastKey: reset ? null : galleryLastKey
+        limit: 5,  // 每页5张（测试用）
+        lastKey: pageToken
       });
       
       // Convert DynamoDB items to gallery format
@@ -226,19 +243,72 @@ export function TestInference() {
         };
       });
       
-      if (reset) {
-        setUploadedImages(dbImages);
+      // Replace current page images (not append)
+      setUploadedImages(dbImages);
+      
+      // Update hasNextPage - 只检查nextPageToken和hasMore
+      // 不能只依赖当前页有没有数据，因为可能总数刚好是5的倍数
+      const hasNext = (
+        (result.nextPageToken !== null && result.nextPageToken !== undefined) || 
+        (result.hasMore === true)
+      );
+      
+      setHasNextPage(hasNext);
+      
+      // 更新分页token - 关键修复
+      if (result.nextPageToken) {
+        // 如果有nextPageToken，更新或添加到tokens数组
+        setPageTokens(prev => {
+          const newTokens = [...prev];
+          // 确保tokens数组足够长
+          while (newTokens.length < pageNum) {
+            newTokens.push(null);
+          }
+          // 设置下一页的token
+          if (newTokens.length === pageNum) {
+            newTokens.push(result.nextPageToken);
+          } else {
+            newTokens[pageNum] = result.nextPageToken;
+          }
+          console.log(`Updated page tokens for page ${pageNum + 1}:`, newTokens);
+          return newTokens;
+        });
       } else {
-        setUploadedImages(prev => [...prev, ...dbImages]);
+        // 没有nextPageToken，确保没有多余的token
+        setPageTokens(prev => {
+          if (prev.length > pageNum) {
+            return prev.slice(0, pageNum);
+          }
+          return prev;
+        });
       }
       
-      setGalleryLastKey(result.last_evaluated_key);
-      setGalleryHasMore(result.has_more);
+      setCurrentPage(pageNum);
+      
+      console.log(`Loaded page ${pageNum}: ${dbImages.length} images, hasNext: ${hasNext}, nextPageToken: ${result.nextPageToken ? 'exists' : 'null'}`);
+      
+      // 如果加载的页面是空的，处理空页面情况
+      if (dbImages.length === 0) {
+        // 空页面意味着没有更多数据
+        setHasNextPage(false);
+        
+        if (pageNum > 1) {
+          // 不是第1页，自动跳回前一页
+          console.warn(`Page ${pageNum} is empty, jumping back to page ${pageNum - 1}`);
+          // 清理这个空页面的token
+          setPageTokens(prev => prev.slice(0, pageNum - 1));
+          setTimeout(() => {
+            loadGalleryPage(pageNum - 1);
+          }, 100);
+        } else {
+          // 第1页也是空的，说明没有任何数据
+          console.log('No images found in gallery');
+        }
+      }
       
     } catch (error) {
       console.warn("DynamoDB gallery not available, using local mode:", error);
       // Gracefully degrade to local-only mode
-      // Don't show error notification if it's just DynamoDB not being configured
       if (!error.message.includes('Not Found') && !error.message.includes('404')) {
         notifications.show({
           title: "Info",
@@ -247,7 +317,7 @@ export function TestInference() {
           autoClose: 3000,
         });
       }
-      setGalleryHasMore(false);
+      setHasNextPage(false);
     } finally {
       setIsLoadingGallery(false);
     }
@@ -269,8 +339,8 @@ export function TestInference() {
         );
       });
     
-    // Load gallery images from DynamoDB
-    loadGalleryImages(true);
+    // Load first page of gallery images from DynamoDB
+    loadGalleryPage(1);
   }, []);
 
   const ImageSection = (
@@ -335,7 +405,15 @@ export function TestInference() {
   );
 
   const handleSelectImage = async (image) => {
-    setCurrentImageURL(image.url);
+    // 先清除旧状态，确保Canvas完全重新渲染
+    setInferenceResults([]);
+    setCurrentImageURL(null);
+    setCurrentImage(null);
+    
+    // 短暂延迟后设置新图片，确保Canvas已清空
+    setTimeout(() => {
+      setCurrentImageURL(image.url);
+    }, 50);
     
     // Check if image is PROCESSED and has inference results
     const imageType = image.metadata?.type || image.uploadResult?.type;
@@ -352,8 +430,10 @@ export function TestInference() {
         autoClose: 2000,
       });
       
-      // Set inference results from metadata
-      setInferenceResults(image.metadata.inference_results);
+      // Set inference results from metadata (稍后设置，让图片先加载)
+      setTimeout(() => {
+        setInferenceResults(image.metadata.inference_results);
+      }, 100);
       
       console.log('Loaded inference results from DynamoDB:', {
         flake_count: image.metadata.flake_count,
@@ -371,15 +451,14 @@ export function TestInference() {
         color: "green",
         autoClose: 5000,
       });
-    } else {
-      // Clear inference results if not processed
-      setInferenceResults([]);
     }
     
     // If image has a file object (locally uploaded), use it directly
     if (image.file) {
-      setCurrentImage(image.file);
-      setUploadedImageData(image.uploadResult);
+      setTimeout(() => {
+        setCurrentImage(image.file);
+        setUploadedImageData(image.uploadResult);
+      }, 50);
     } else if (image.url) {
       // If no file but has URL (from DynamoDB), download it
       try {
@@ -396,8 +475,10 @@ export function TestInference() {
           type: blob.type || 'image/jpeg'
         });
         
-        setCurrentImage(file);
-        setUploadedImageData(image.uploadResult);
+        setTimeout(() => {
+          setCurrentImage(file);
+          setUploadedImageData(image.uploadResult);
+        }, 50);
         
         console.log('Image downloaded from URL and ready for inference');
         
@@ -428,7 +509,8 @@ export function TestInference() {
       }
       
       // Remove from local state
-      setUploadedImages((prev) => prev.filter((img) => img.id !== imageId));
+      const newImages = uploadedImages.filter((img) => img.id !== imageId);
+      setUploadedImages(newImages);
       
       // If deleted image is currently displayed, clear it
       if (uploadedImages.find((img) => img.id === imageId && img.url === currentImageURL)) {
@@ -436,6 +518,27 @@ export function TestInference() {
         setCurrentImage(null);
         setInferenceResults([]);
       }
+      
+      // 智能分页处理
+      if (image && image.imageID) {
+        // 如果当前页删除后为空
+        if (newImages.length === 0) {
+          if (currentPage > 1) {
+            // 不是第1页，跳转到前一页
+            loadGalleryPage(currentPage - 1);
+            console.log(`Page ${currentPage} empty, jumped to page ${currentPage - 1}`);
+          } else {
+            // 是第1页，刷新以查看是否还有数据
+            loadGalleryPage(1);
+            console.log('Page 1 refreshed after deletion');
+          }
+        } else {
+          // 当前页还有图片，刷新当前页以补充新数据
+          loadGalleryPage(currentPage);
+          console.log(`Page ${currentPage} refreshed to load more items`);
+        }
+      }
+      
     } catch (error) {
       console.error("Failed to delete image:", error);
       notifications.show({
@@ -448,11 +551,23 @@ export function TestInference() {
   };
   
   const handleRefreshGallery = () => {
-    loadGalleryImages(true);
+    // Reset to page 1
+    setCurrentPage(1);
+    setPageTokens([null]);
+    setHasNextPage(false);
+    loadGalleryPage(1);
   };
   
-  const handleLoadMoreImages = () => {
-    loadGalleryImages(false);
+  const handleNextPage = () => {
+    if (hasNextPage && !isLoadingGallery) {
+      loadGalleryPage(currentPage + 1);
+    }
+  };
+  
+  const handlePrevPage = () => {
+    if (currentPage > 1 && !isLoadingGallery) {
+      loadGalleryPage(currentPage - 1);
+    }
   };
   
   const handleOpenEditModal = (image, e) => {
@@ -673,17 +788,32 @@ export function TestInference() {
                 </div>
               ))}
             </div>
-            {galleryHasMore && (
-              <Button
-                variant="subtle"
-                size="xs"
-                fullWidth
-                mt="sm"
-                onClick={handleLoadMoreImages}
-                loading={isLoadingGallery}
-              >
-                Load More
-              </Button>
+            
+            {/* Pagination Controls */}
+            {(currentPage > 1 || hasNextPage) && (
+              <Group justify="space-between" mt="sm" px="xs">
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 1 || isLoadingGallery}
+                >
+                  ← Prev
+                </Button>
+                
+                <Text size="xs" fw={500} c="dimmed">
+                  Page {currentPage} ({uploadedImages.length} items)
+                </Text>
+                
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={handleNextPage}
+                  disabled={!hasNextPage || isLoadingGallery}
+                >
+                  Next →
+                </Button>
+              </Group>
             )}
           </>
         )}

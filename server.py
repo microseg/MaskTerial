@@ -300,7 +300,7 @@ async def upload_image(
         'customerID': customer_id,
         'imageID': image_id,
         'imageName': image_name,
-        'createdAt': current_timestamp,
+        'CreatedAt': current_timestamp,  # 大写C - DynamoDB Sort Key
         'type': 'UPLOADED',
         's3Key': s3_key,
         'imageURL': presigned_view_url,  # Presigned URL for viewing
@@ -383,7 +383,7 @@ async def get_user_images(
             ExpressionAttributeValues={
                 ':customer_id': customer_id
             },
-            ScanIndexForward=False,  # Sort by sort key (imageID) in descending order
+            ScanIndexForward=False,  # Sort by CreatedAt (Sort Key) in descending order - newest first
             Limit=limit
         )
         
@@ -412,7 +412,7 @@ async def get_user_images(
             image_list.append({
                 'imageID': img['imageID'],
                 'imageName': img.get('imageName', 'Untitled'),
-                'createdAt': img['createdAt'],
+                'createdAt': img.get('CreatedAt', img.get('createdAt')),  # 兼容大小写
                 'type': img.get('type', 'UPLOADED'),
                 'status': img.get('status', 'active'),
                 'url': presigned_url,
@@ -927,9 +927,9 @@ async def get_user_images(
     
     return {
         "items": refreshed_items,
-        "last_evaluated_key": encoded_last_key,
+        "nextPageToken": encoded_last_key,  # 使用nextPageToken替代last_evaluated_key
         "count": len(refreshed_items),
-        "has_more": result["has_more"],
+        "hasMore": result["has_more"],  # 使用hasMore替代has_more
         "customer_id": current_user_id,
         "page_size": limit
     }

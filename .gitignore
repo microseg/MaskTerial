@@ -61,7 +61,7 @@ model_ts*.txt
 .idea
 .vscode
 _darcs
-
+.env
 
 wandb
 
