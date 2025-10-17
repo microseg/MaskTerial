@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.6.0",
     "@mantine/core": "^7.14.2",
     "@mantine/dropzone": "^7.14.2",
     "@mantine/hooks": "^7.14.2",

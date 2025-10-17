@@ -16,5 +16,6 @@ uvicorn
 python-multipart
 pycocotools
 pyqt5
+email-validator
 boto3
 pillow

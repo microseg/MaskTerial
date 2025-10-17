@@ -6,9 +6,46 @@ import { UploadModelPage } from "./pages/UploadModelPage";
 import { TestInference } from "./pages/TestInference";
 import { UserCenter } from "./components/UserCenter";
 import { useUser } from "./contexts/UserContext";
+import { useEffect, useState } from "react";
+import { Landing } from "./pages/Landing";
+import { UserAuth } from "./pages/UserAuth";
 
 function App() {
-  const { userId } = useUser();
+  const { userId, updateUserId } = useUser();
+  const [routeHash, setRouteHash] = useState(window.location.hash || "");
+
+  useEffect(() => {
+    const onHash = () => setRouteHash(window.location.hash || "");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const enterHandler = (m) => {
+    if (m === "user") {
+      window.location.hash = "#user"; // show login/signup
+    } else {
+      window.location.hash = "#guest"; // show app
+    }
+  };
+
+  const handleLogout = () => {
+    // Reset to landing page
+    window.location.hash = "";
+    // Optionally reset user ID to default
+    updateUserId("test_user");
+  };
+
+  if (!routeHash || routeHash === "#") {
+    return <Landing onEnter={enterHandler} />;
+  }
+
+  if (routeHash === "#user") {
+    return (
+      <Box style={{ height: "100vh", padding: "20px" }}>
+        <UserAuth onSuccess={() => (window.location.hash = "#guest")} />
+      </Box>
+    );
+  }
 
   return (
     <Box style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -47,7 +84,7 @@ function App() {
             <Tabs.Tab value="test">Test Inference</Tabs.Tab>
           </Tabs.List>
           
-          <UserCenter userId={userId} />
+          <UserCenter userId={userId} onLogout={handleLogout} />
         </Group>
 
         {/* Content Area */}

@@ -1,18 +1,39 @@
-import { Menu, Text, Avatar, Group, Box } from "@mantine/core";
-import { IconSettings } from "@tabler/icons-react";
+import { Menu, Text, Avatar, Group, Box, Button } from "@mantine/core";
+import { IconSettings, IconLogout } from "@tabler/icons-react";
 import styles from "./UserCenter.module.css";
 
-export function UserCenter({ userId }) {
+export function UserCenter({ userId, onLogout }) {
+  const getDisplayName = () => {
+    if (userId === "guest_user") {
+      return "Guest User";
+    }
+    return userId;
+  };
+
+  const getAvatarColor = () => {
+    if (userId === "guest_user") {
+      return "gray";
+    }
+    return "blue";
+  };
+
+  const getAvatarText = () => {
+    if (userId === "guest_user") {
+      return "G";
+    }
+    return userId.charAt(0).toUpperCase();
+  };
+
   return (
     <Menu shadow="md" width={200}>
       <Menu.Target>
         <Box className={styles.userCenter}>
           <Group gap="xs" wrap="nowrap">
-            <Avatar color="blue" radius="xl" size="sm">
-              {userId.charAt(0).toUpperCase()}
+            <Avatar color={getAvatarColor()} radius="xl" size="sm">
+              {getAvatarText()}
             </Avatar>
             <Text size="sm" fw={500} className={styles.userName}>
-              {userId}
+              {getDisplayName()}
             </Text>
           </Group>
         </Box>
@@ -21,10 +42,25 @@ export function UserCenter({ userId }) {
       <Menu.Dropdown>
         <Menu.Label>User Information</Menu.Label>
         <Menu.Item>
-          <Text size="sm">User ID: {userId}</Text>
+          <Text size="sm">
+            {userId === "guest_user" ? "Guest Mode" : `User: ${userId}`}
+          </Text>
         </Menu.Item>
+        {userId === "guest_user" && (
+          <Menu.Item>
+            <Text size="xs" c="dimmed">
+              Images are not saved in guest mode
+            </Text>
+          </Menu.Item>
+        )}
         <Menu.Divider />
-        <Menu.Label>Settings</Menu.Label>
+        <Menu.Label>Actions</Menu.Label>
+        <Menu.Item 
+          leftSection={<IconLogout size={14} />}
+          onClick={onLogout}
+        >
+          Back to Home
+        </Menu.Item>
         <Menu.Item 
           leftSection={<IconSettings size={14} />}
           disabled

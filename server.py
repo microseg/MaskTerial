@@ -17,6 +17,14 @@ from botocore.exceptions import ClientError
 from PIL import Image
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Request
+from pydantic import BaseModel
+import sqlite3
+import smtplib
+from email.mime.text import MIMEText
+from email.utils import formataddr
+from contextlib import closing
+import secrets
+import string
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -73,6 +81,54 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cls_model_dir = os.path.join(file_dir, "data", "models", "classification_models")
 seg_model_dir = os.path.join(file_dir, "data", "models", "segmentation_models")
 pp_model_dir = os.path.join(file_dir, "data", "models", "postprocessing_models")
+
+# -----------------------------
+# Simple local auth (plaintext)
+# -----------------------------
+users_db_path = os.path.join(file_dir, "data", "users.db")
+
+def _init_users_db() -> None:
+    os.makedirs(os.path.join(file_dir, "data"), exist_ok=True)
+    with closing(sqlite3.connect(users_db_path)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        conn.commit()
+
+_init_users_db()
+
+class AuthRequest(BaseModel):
+    email: str
+    password: Optional[str] = None
+
+def _send_mail(to_email: str, subject: str, body: str) -> None:
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user or "no-reply@example.com")
+    if not smtp_host or not smtp_user or not smtp_pass:
+        print("SMTP not configured; skipping email send to:", to_email)
+        return
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["From"] = formataddr(("MaskTerial", smtp_from))
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_from, [to_email], msg.as_string())
+
+def _generate_temp_password(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 pretrained_m2f_path = os.path.join(
     file_dir,
@@ -186,6 +242,88 @@ async def get_models_api():
     return await get_models()
 
 
+# ==========================
+# Local Auth API (plaintext)
+# ==========================
+
+@app.post("/api/auth/register")
+async def auth_register(payload: AuthRequest):
+    print(f"DEBUG: Received register request - email: {payload.email}, password: {payload.password}")
+    if not payload.password or payload.password.strip() == "":
+        raise HTTPException(status_code=400, detail="Password is required")
+    try:
+        with closing(sqlite3.connect(users_db_path)) as conn:
+            conn.execute(
+                "INSERT INTO users (email, password) VALUES (?, ?)",
+                (payload.email.lower().strip(), payload.password)
+            )
+            conn.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return {"success": True, "message": "Registered successfully"}
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: AuthRequest):
+    with closing(sqlite3.connect(users_db_path)) as conn:
+        cur = conn.execute(
+            "SELECT password FROM users WHERE email = ?",
+            (payload.email.lower().strip(),)
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="User not found")
+    stored_password = row[0]
+    if payload.password != stored_password:
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    return {"success": True, "message": "Login successful"}
+
+
+@app.post("/api/auth/forgot-password")
+async def auth_forgot_password(payload: AuthRequest):
+    # Generate a new temporary password and email it
+    temp_password = _generate_temp_password()
+    with closing(sqlite3.connect(users_db_path)) as conn:
+        cur = conn.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (payload.email.lower().strip(),)
+        )
+        row = cur.fetchone()
+        if not row:
+            # To keep simple, return 200 but indicate not found
+            return {"success": False, "message": "Email not registered"}
+        conn.execute(
+            "UPDATE users SET password = ? WHERE email = ?",
+            (temp_password, payload.email.lower().strip())
+        )
+        conn.commit()
+    try:
+        _send_mail(
+            to_email=payload.email,
+            subject="Your MaskTerial Password",
+            body=f"Your password has been reset. New password: {temp_password}"
+        )
+    except Exception as e:
+        print("Email sending failed:", str(e))
+    return {"success": True, "message": "If the email exists, a new password was sent"}
+
+
+# Duplicate non-API paths to work with nginx /api/ proxy behavior
+@app.post("/auth/register")
+async def auth_register_noapi(payload: AuthRequest):
+    return await auth_register(payload)
+
+
+@app.post("/auth/login")
+async def auth_login_noapi(payload: AuthRequest):
+    return await auth_login(payload)
+
+
+@app.post("/auth/forgot-password")
+async def auth_forgot_password_noapi(payload: AuthRequest):
+    return await auth_forgot_password(payload)
+
+
 @app.post("/upload_image")
 async def upload_image(
     image_file: UploadFile = File(...),
@@ -194,7 +332,7 @@ async def upload_image(
     x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
 ):
     """
-    Upload an image to S3 and store metadata in DynamoDB
+    Upload an image to local storage (for registered users) or temporary storage (for guests)
     
     Args:
         image_file: The image file to upload
@@ -206,6 +344,17 @@ async def upload_image(
     """
     # Get and sanitize user_id
     customer_id = get_user_id_from_request(user_id, x_user_id)
+    
+    # Check if user is guest - don't save images for guests
+    if customer_id == "guest_user":
+        return {
+            "success": True,
+            "message": "Guest mode - image not saved",
+            "imageID": "guest_temp",
+            "customerID": customer_id,
+            "imageName": image_file.filename or "temp_image",
+            "saved": False
+        }
     
     # Generate unique image ID
     image_id = str(uuid.uuid4())
@@ -246,83 +395,68 @@ async def upload_image(
             detail=f"Invalid image file: {str(e)}"
         )
     
-    # Construct S3 key
-    s3_key = f"{customer_id}/uploaded/{image_id}_original.jpg"
+    # Create user-specific directory structure
+    user_images_dir = Path(file_dir) / "user_images" / customer_id / "uploaded"
+    user_images_dir.mkdir(parents=True, exist_ok=True)
     
-    # Upload to S3
+    # Save image to local filesystem
+    image_filename = f"{image_id}_original.jpg"
+    image_path = user_images_dir / image_filename
+    
     try:
-        s3_client.put_object(
-            Bucket=S3_BUCKET_NAME,
-            Key=s3_key,
-            Body=image_data,
-            ContentType='image/jpeg',
-            Metadata={
-                'customer-id': customer_id,
-                'image-id': image_id,
-                'original-name': image_name
-            }
-        )
-    except ClientError as e:
+        with open(image_path, 'wb') as f:
+            f.write(image_data)
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to upload image to S3: {str(e)}"
+            detail=f"Failed to save image to local storage: {str(e)}"
         )
     
-    # Generate presigned URL for viewing (7天有效，足够长)
-    # AWS presigned URL最长7天，我们使用最大值
-    presigned_view_url = generate_presigned_download_url(
-        bucket_name=S3_BUCKET_NAME,
-        s3_key=s3_key,
-        expiration=7 * 24 * 60 * 60,  # 7 days (AWS maximum for presigned URLs)
-        custom_filename=None  # Don't force download, allow viewing in browser
-    )
+    # Create local URLs for viewing and downloading
+    view_url = f"/api/user_images/{customer_id}/{image_id}"
+    download_url = f"/api/user_images/{customer_id}/{image_id}/download"
     
-    # Generate presigned URL for downloading (7天有效)
-    presigned_download_url = generate_presigned_download_url(
-        bucket_name=S3_BUCKET_NAME,
-        s3_key=s3_key,
-        expiration=7 * 24 * 60 * 60,  # 7 days
-        custom_filename=image_name  # Force download with original filename
-    )
+    # No expiration for local files
+    url_expires_at = 0
     
-    # Use presigned URL as primary URL (private bucket compatible)
-    download_url = presigned_view_url or presigned_download_url
-    
-    # Calculate URL expiration timestamp (7天后)
-    url_expires_at = int((datetime.now() + timedelta(days=7)).timestamp())
-    
-    # Prepare DynamoDB record
+    # Create metadata for local storage
     current_timestamp = int(datetime.now().timestamp())
-    # Set record expiration to 90 days from now (configurable)
-    expires_at = int((datetime.now() + timedelta(days=90)).timestamp())
     
-    dynamodb_item = {
+    metadata = {
         'customerID': customer_id,
         'imageID': image_id,
         'imageName': image_name,
-        'CreatedAt': current_timestamp,  # 大写C - DynamoDB Sort Key
-        'type': 'UPLOADED',
-        's3Key': s3_key,
-        'imageURL': presigned_view_url,  # Presigned URL for viewing
-        'downloadURL': presigned_download_url,  # Presigned URL for downloading (7天有效)
-        'downloadURLExpiresAt': url_expires_at,  # URL expiration timestamp
+        'imagePath': str(image_path),
+        'imageURL': view_url,
+        'downloadURL': download_url,
+        'downloadURLExpiresAt': url_expires_at,
         'status': 'active',
-        'metadata': {},  # Empty for now, will be filled after inference
-        'expiresAt': expires_at
+        'type': 'UPLOADED',
+        'createdAt': current_timestamp,
+        'updatedAt': current_timestamp,
+        'originalName': image_name,
+        'fileSize': len(image_data),
+        'imageFormat': image_format,
+        'metadata': {
+            'upload_source': 'web_interface',
+            'user_agent': 'maskterial_web'
+        }
     }
     
-    # Store in DynamoDB
+    # Save metadata to JSON file
+    metadata_path = user_images_dir / f"{image_id}_metadata.json"
     try:
-        customer_images_table.put_item(Item=dynamodb_item)
-    except ClientError as e:
-        # If DynamoDB fails, try to delete the S3 object
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+    except Exception as e:
+        # If metadata save fails, clean up the image file
         try:
-            s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=s3_key)
+            image_path.unlink()
         except:
             pass
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to store image metadata in DynamoDB: {str(e)}"
+            detail=f"Failed to save image metadata: {str(e)}"
         )
     
     # Log user action
@@ -333,8 +467,8 @@ async def upload_image(
         {
             "image_id": image_id,
             "image_name": image_name,
-            "s3_key": s3_key,
-            "download_url_generated": presigned_download_url is not None
+            "local_path": str(image_path),
+            "saved_locally": True
         }
     )
     
@@ -343,15 +477,15 @@ async def upload_image(
         "imageID": image_id,
         "customerID": customer_id,
         "imageName": image_name,
-        "s3Key": s3_key,
-        "imageURL": presigned_view_url,  # Presigned URL for viewing (7天有效)
-        "downloadURL": presigned_download_url,  # Presigned URL for downloading (7天有效)
-        "downloadURLExpiresAt": url_expires_at,  # URL过期时间
+        "imagePath": str(image_path),
+        "imageURL": view_url,  # Local URL for viewing
+        "downloadURL": download_url,  # Local URL for downloading
+        "downloadURLExpiresAt": url_expires_at,  # No expiration for local files
         "createdAt": current_timestamp,
-        "bucket": S3_BUCKET_NAME,
-        "key": s3_key,
-        "region": S3_REGION,
-        "message": "Image uploaded successfully"
+        "fileSize": len(image_data),
+        "imageFormat": image_format,
+        "saved": True,
+        "message": "Image uploaded and saved successfully"
     }
 
 
@@ -831,108 +965,18 @@ async def get_user_images(
     # Get and sanitize user_id
     current_user_id = get_user_id_from_request(user_id, x_user_id)
     
-    # Decode pagination token if provided
-    last_evaluated_key = None
-    if last_key:
-        try:
-            import base64
-            decoded_key = base64.b64decode(last_key).decode('utf-8')
-            last_evaluated_key = json.loads(decoded_key)
-        except Exception as e:
-            print(f"Error decoding pagination token: {str(e)}")
-            # Continue with None - will start from beginning
+    # For guest users, return empty list
+    if current_user_id == "guest_user":
+        return {
+            "items": [],
+            "count": 0,
+            "hasMore": False,
+            "customer_id": current_user_id,
+            "page_size": limit
+        }
     
-    # Query DynamoDB
-    result = query_user_images(
-        customer_id=current_user_id,
-        limit=limit,
-        last_evaluated_key=last_evaluated_key
-    )
-    
-    # Check for errors
-    if "error" in result:
-        raise HTTPException(
-            status_code=500,
-            detail=result.get("error_message", "Failed to query images")
-        )
-    
-    # Auto-refresh expired URLs
-    current_time = int(datetime.now().timestamp())
-    refreshed_items = []
-    
-    for item in result["items"]:
-        # Check if URL is expired or expiring soon (within 1 day)
-        url_expires_at = item.get('download_url_expires_at')
-        
-        # If no expiration time or URL is missing, needs refresh
-        needs_refresh = (
-            not item.get('image_url') or 
-            not item.get('download_url') or
-            url_expires_at is None or
-            url_expires_at < (current_time + 86400)  # Expiring within 24 hours
-        )
-        
-        if needs_refresh and item.get('s3Key'):
-            print(f"Auto-refreshing URL for image {item['imageID']} (expires at {url_expires_at})")
-            
-            # Generate new presigned URLs
-            new_view_url = generate_presigned_download_url(
-                bucket_name=S3_BUCKET_NAME,
-                s3_key=item['s3Key'],
-                expiration=7 * 24 * 60 * 60,
-                custom_filename=None
-            )
-            
-            new_download_url = generate_presigned_download_url(
-                bucket_name=S3_BUCKET_NAME,
-                s3_key=item['s3Key'],
-                expiration=7 * 24 * 60 * 60,
-                custom_filename=item.get('image_name', 'download.jpg')
-            )
-            
-            new_expires_at = int((datetime.now() + timedelta(days=7)).timestamp())
-            
-            # Update item with new URLs
-            if new_view_url:
-                item['image_url'] = new_view_url
-                item['download_url'] = new_download_url or new_view_url
-                item['download_url_expires_at'] = new_expires_at
-                
-                # Update DynamoDB
-                try:
-                    customer_images_table.update_item(
-                        Key={
-                            'customerID': item['customerID'],
-                            'imageID': item['imageID']
-                        },
-                        UpdateExpression='SET imageURL = :view_url, downloadURL = :dl_url, downloadURLExpiresAt = :exp',
-                        ExpressionAttributeValues={
-                            ':view_url': new_view_url,
-                            ':dl_url': new_download_url or new_view_url,
-                            ':exp': new_expires_at
-                        }
-                    )
-                    print(f"✓ URL refreshed for {item['imageID']}")
-                except Exception as e:
-                    print(f"✗ Failed to update DynamoDB: {str(e)}")
-        
-        refreshed_items.append(item)
-    
-    # Encode pagination token for response
-    encoded_last_key = None
-    if result.get("last_evaluated_key"):
-        import base64
-        json_key = json.dumps(result["last_evaluated_key"])
-        encoded_last_key = base64.b64encode(json_key.encode('utf-8')).decode('utf-8')
-    
-    return {
-        "items": refreshed_items,
-        "nextPageToken": encoded_last_key,  # 使用nextPageToken替代last_evaluated_key
-        "count": len(refreshed_items),
-        "hasMore": result["has_more"],  # 使用hasMore替代has_more
-        "customer_id": current_user_id,
-        "page_size": limit
-    }
+    # Use local storage instead of DynamoDB
+    return await list_user_images(current_user_id, limit)
 
 
 @app.get("/images/{image_id}/download")
@@ -1418,6 +1462,107 @@ async def delete_image_endpoint(
         "message": f"Image {image_id} deleted" + (" (DynamoDB only)" if not deletion_results["s3_deleted"] else " (S3 and DynamoDB)"),
         "image_id": image_id,
         "details": deletion_results
+    }
+
+
+# ============================================
+# Local Image Storage API Endpoints
+# ============================================
+
+@app.get("/api/user_images/{user_id}/{image_id}")
+async def get_user_image(
+    user_id: str,
+    image_id: str
+):
+    """
+    Serve user's uploaded image for viewing
+    """
+    # Security check - only allow access to own images
+    # In a real app, you'd verify the user is authenticated and authorized
+    
+    image_path = Path(file_dir) / "user_images" / user_id / "uploaded" / f"{image_id}_original.jpg"
+    
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    return FileResponse(
+        path=str(image_path),
+        media_type="image/jpeg",
+        filename=f"{image_id}.jpg"
+    )
+
+
+@app.get("/api/user_images/{user_id}/{image_id}/download")
+async def download_user_image(
+    user_id: str,
+    image_id: str
+):
+    """
+    Download user's uploaded image
+    """
+    image_path = Path(file_dir) / "user_images" / user_id / "uploaded" / f"{image_id}_original.jpg"
+    
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    # Get metadata for filename
+    metadata_path = Path(file_dir) / "user_images" / user_id / "uploaded" / f"{image_id}_metadata.json"
+    filename = f"{image_id}.jpg"
+    
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                filename = metadata.get('originalName', f"{image_id}.jpg")
+        except:
+            pass
+    
+    return FileResponse(
+        path=str(image_path),
+        media_type="image/jpeg",
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+    )
+
+
+@app.get("/api/user_images/{user_id}/list")
+async def list_user_images(
+    user_id: str,
+    limit: int = 10
+):
+    """
+    List user's uploaded images
+    """
+    user_images_dir = Path(file_dir) / "user_images" / user_id / "uploaded"
+    
+    if not user_images_dir.exists():
+        return {
+            "items": [],
+            "count": 0,
+            "hasMore": False,
+            "customer_id": user_id
+        }
+    
+    # Get all metadata files
+    metadata_files = list(user_images_dir.glob("*_metadata.json"))
+    images = []
+    
+    for metadata_file in metadata_files[:limit]:
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+                # Add local URLs
+                metadata['imageURL'] = f"/api/user_images/{user_id}/{metadata['imageID']}"
+                metadata['downloadURL'] = f"/api/user_images/{user_id}/{metadata['imageID']}/download"
+                images.append(metadata)
+        except:
+            continue
+    
+    return {
+        "items": images,
+        "count": len(images),
+        "hasMore": len(metadata_files) > limit,
+        "customer_id": user_id
     }
 
 
