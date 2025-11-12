@@ -11,7 +11,7 @@ import { Landing } from "./pages/Landing";
 import { UserAuth } from "./pages/UserAuth";
 
 function App() {
-  const { userId, updateUserId } = useUser();
+  const { userId, logout } = useUser();
   const [routeHash, setRouteHash] = useState(window.location.hash || "");
 
   useEffect(() => {
@@ -29,10 +29,10 @@ function App() {
   };
 
   const handleLogout = () => {
+    // Clear all authentication data
+    logout();
     // Reset to landing page
     window.location.hash = "";
-    // Optionally reset user ID to default
-    updateUserId("test_user");
   };
 
   if (!routeHash || routeHash === "#") {

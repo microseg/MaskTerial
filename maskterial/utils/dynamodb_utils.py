@@ -12,7 +12,7 @@ from decimal import Decimal
 
 try:
     import boto3
-    from boto3.dynamodb.conditions import Key
+    from boto3.dynamodb.conditions import Key, Attr
     from botocore.exceptions import ClientError
     DYNAMODB_AVAILABLE = True
 except ImportError:
@@ -92,6 +92,7 @@ def query_user_images(
         # Build query parameters
         query_params = {
             'KeyConditionExpression': Key('customerID').eq(customer_id),
+            'FilterExpression': Attr('status').eq('active'),  # Only return active images
             'ScanIndexForward': False,  # Sort by CreatedAt DESC
             'Limit': limit
         }
@@ -106,6 +107,10 @@ def query_user_images(
         # Extract items and convert Decimal to native types
         items = []
         for item in response.get('Items', []):
+            # Skip deleted items (double check)
+            if item.get('status') == 'deleted':
+                continue
+                
             # Convert DynamoDB item to dict with native types
             converted_item = json.loads(json.dumps(item, cls=DecimalEncoder))
             
@@ -365,6 +370,8 @@ def update_image_metadata(
         
     except Exception as e:
         print(f"Error updating DynamoDB: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 

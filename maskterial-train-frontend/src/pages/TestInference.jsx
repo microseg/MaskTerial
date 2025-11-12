@@ -5,7 +5,7 @@ import { CanvasImage } from "../components/CanvasImage";
 import { Paper, Select, Button, ActionIcon, Text, ScrollArea, Tooltip, Badge, Group, Modal, TextInput, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconChevronLeft, IconChevronRight, IconPhoto, IconRefresh, IconDownload, IconEdit } from "@tabler/icons-react";
-import { getUserImages, saveImageMetadata, deleteImageById, refreshDownloadUrl, updateImageMetadata } from "../utils/apiClient";
+import { getUserImages, saveImageMetadata, deleteImageById, refreshDownloadUrl, updateImageMetadata, fetchWithAuth } from "../utils/apiClient";
 
 const formatModelData = (data) => {
   return Object.keys(data).reduce((acc, model) => {
@@ -35,6 +35,23 @@ export function TestInference() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingImage, setEditingImage] = useState(null);
   const [editImageName, setEditImageName] = useState('');
+  const [imageBlobUrls, setImageBlobUrls] = useState({}); // Map imageID -> blob URL
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(imageBlobUrls).forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, [imageBlobUrls]);
+
+  // Auto-load gallery when opened
+  useEffect(() => {
+    if (isGalleryOpen && uploadedImages.length === 0 && !isLoadingGallery) {
+      loadGalleryPage(1);
+    }
+  }, [isGalleryOpen]);
 
   const handleUserImageInput = async (files, uploadResult) => {
     // Use local blob URL for immediate display
@@ -214,34 +231,60 @@ export function TestInference() {
         lastKey: pageToken
       });
       
-      // Convert DynamoDB items to gallery format
-      const dbImages = result.items.map(item => {
-        // Use backend proxy URL to avoid CORS issues
+      // Clean up old blob URLs for images no longer on this page
+      const newImageIds = new Set(result.items.map(item => item.imageID));
+      Object.entries(imageBlobUrls).forEach(([imageId, blobUrl]) => {
+        if (!newImageIds.has(imageId)) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      });
+      
+      // Create blob URLs for new images
+      const newBlobUrls = {};
+      const dbImages = await Promise.all(result.items.map(async (item) => {
         const proxyUrl = `/api/images/${item.imageID}/download`;
+        
+        // Fetch image with auth and create blob URL for display
+        let displayUrl = proxyUrl;
+        try {
+          const response = await fetchWithAuth(proxyUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            displayUrl = URL.createObjectURL(blob);
+            newBlobUrls[item.imageID] = displayUrl;
+          }
+        } catch (error) {
+          console.error(`Failed to load image ${item.imageID}:`, error);
+          // Fall back to proxy URL (will fail but at least we tried)
+        }
         
         return {
           id: item.imageID,
           imageID: item.imageID,
-          url: proxyUrl,  // Use backend proxy URL (no CORS issues)
-          name: item.image_name,
+          url: displayUrl,  // Use blob URL for display
+          proxyUrl: proxyUrl,  // Keep proxy URL for downloads
+          name: item.image_name || item.imageName || 'Untitled',  // Support both field names
           createdAt: item.CreatedAt,
           metadata: {
             ...item.metadata,
             type: item.type  // Include type from DynamoDB
           },
-          download_url: proxyUrl,  // Use same proxy URL for download
+          download_url: proxyUrl,  // Use proxy URL for download
           s3Key: item.s3Key,
           s3Url: item.image_url,  // Keep original S3 URL for reference
           uploadResult: {
             imageID: item.imageID,
-            imageURL: proxyUrl,
+            imageURL: displayUrl,
             downloadURL: proxyUrl,
             type: item.type,  // Include type
             bucket: item.metadata?.s3_bucket,
             key: item.s3Key || item.metadata?.s3_key
           }
         };
-      });
+      }));
+      
+      // Update blob URLs state
+      setImageBlobUrls(newBlobUrls);
       
       // Replace current page images (not append)
       setUploadedImages(dbImages);
@@ -285,8 +328,6 @@ export function TestInference() {
       
       setCurrentPage(pageNum);
       
-      console.log(`Loaded page ${pageNum}: ${dbImages.length} images, hasNext: ${hasNext}, nextPageToken: ${result.nextPageToken ? 'exists' : 'null'}`);
-      
       // 如果加载的页面是空的，处理空页面情况
       if (dbImages.length === 0) {
         // 空页面意味着没有更多数据
@@ -302,7 +343,7 @@ export function TestInference() {
           }, 100);
         } else {
           // 第1页也是空的，说明没有任何数据
-          console.log('No images found in gallery');
+          // Gallery will show "No images uploaded yet" message
         }
       }
       
@@ -462,8 +503,8 @@ export function TestInference() {
     } else if (image.url) {
       // If no file but has URL (from DynamoDB), download it
       try {
-        // Fetch the image from URL
-        const response = await fetch(image.url);
+        // Fetch the image from URL with authentication
+        const response = await fetchWithAuth(image.url);
         if (!response.ok) {
           throw new Error('Failed to fetch image');
         }
@@ -616,15 +657,13 @@ export function TestInference() {
         autoClose: 3000,
       });
       
-      // Update local state
-      setUploadedImages(prev => prev.map(img => 
-        img.id === editingImage.id 
-          ? { ...img, name: editImageName }
-          : img
-      ));
-      
-      // Close modal
+      // Close modal first
       handleCloseEditModal();
+      
+      // Reload current page to sync with DynamoDB
+      setTimeout(() => {
+        loadGalleryPage(currentPage);
+      }, 500);
       
     } catch (error) {
       console.error("Failed to update image:", error);
@@ -642,11 +681,29 @@ export function TestInference() {
     
     try {
       // Use download URL (permanent, no expiration check needed)
-      const downloadUrl = image.download_url || image.url;
+      const downloadUrl = image.download_url || image.proxyUrl || image.url;
       
       if (downloadUrl) {
-        // Open URL in new tab to download
-        window.open(downloadUrl, '_blank');
+        // Fetch the image with authentication
+        const response = await fetchWithAuth(downloadUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch image');
+        }
+        
+        // Get the blob
+        const blob = await response.blob();
+        
+        // Create a blob URL and trigger download
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = image.name || 'image.jpg';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up blob URL
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
         
         notifications.show({
           title: "Download Started",

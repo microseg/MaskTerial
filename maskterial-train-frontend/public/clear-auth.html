@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Authentication Data</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        .success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #1976d2;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #d32f2f;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .data-display {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Clear Authentication Data</h1>
+        
+        <div class="status info">
+            <strong>What is this?</strong><br>
+            This page helps you clear cached authentication data (JWT tokens) from your browser.
+        </div>
+
+        <h2>Current State</h2>
+        <div class="data-display" id="current-state">Loading...</div>
+
+        <h2>Actions</h2>
+        <button onclick="showState()">🔍 Show Current State</button>
+        <button class="danger" onclick="clearAuth()">🗑️ Clear Authentication</button>
+        <button onclick="goHome()">🏠 Go to Home Page</button>
+
+        <div id="result-message"></div>
+
+        <h2>Manual Instructions</h2>
+        <div class="status warning">
+            <strong>Alternative method:</strong><br>
+            1. Press <code>F12</code> to open Developer Tools<br>
+            2. Go to <code>Application</code> tab<br>
+            3. Find <code>Local Storage</code> → <code>http://localhost:8000</code><br>
+            4. Delete these keys: <code>accessToken</code>, <code>email</code><br>
+            5. Refresh the page
+        </div>
+    </div>
+
+    <script>
+        function showState() {
+            const state = {
+                userId: localStorage.getItem('userId'),
+                hasToken: !!localStorage.getItem('accessToken'),
+                tokenPreview: localStorage.getItem('accessToken') 
+                    ? localStorage.getItem('accessToken').substring(0, 30) + '...'
+                    : 'null',
+                email: localStorage.getItem('email')
+            };
+
+            document.getElementById('current-state').innerHTML = JSON.stringify(state, null, 2);
+
+            const resultDiv = document.getElementById('result-message');
+            if (state.hasToken) {
+                resultDiv.innerHTML = '<div class="status warning"><strong>⚠️ Warning:</strong> You have an active JWT token. This means you are logged in as: ' + state.email + '</div>';
+            } else {
+                resultDiv.innerHTML = '<div class="status success"><strong>✅ Good:</strong> No authentication token found. You are in Guest mode.</div>';
+            }
+        }
+
+        function clearAuth() {
+            // Clear authentication data
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('email');
+            localStorage.setItem('userId', 'test_user');
+
+            // Show success message
+            const resultDiv = document.getElementById('result-message');
+            resultDiv.innerHTML = '<div class="status success"><strong>✅ Success!</strong> Authentication data cleared. You are now in Guest mode (test_user).</div>';
+
+            // Update display
+            showState();
+
+            // Countdown and redirect
+            let countdown = 3;
+            const countdownInterval = setInterval(() => {
+                resultDiv.innerHTML = '<div class="status success"><strong>✅ Success!</strong> Authentication data cleared. Redirecting to home page in ' + countdown + ' seconds...</div>';
+                countdown--;
+                if (countdown < 0) {
+                    clearInterval(countdownInterval);
+                    window.location.href = '/';
+                }
+            }, 1000);
+        }
+
+        function goHome() {
+            window.location.href = '/';
+        }
+
+        // Auto-show state on load
+        window.onload = showState;
+    </script>
+</body>
+</html>
+

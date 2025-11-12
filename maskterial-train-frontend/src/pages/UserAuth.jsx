@@ -7,7 +7,7 @@ const REGISTER_URL = import.meta.env.VITE_AUTH_REGISTER_URL || "/api/auth/regist
 const LOGIN_URL = import.meta.env.VITE_AUTH_LOGIN_URL || "/api/auth/login";
 
 export function UserAuth({ onSuccess }) {
-  const { updateUserId } = useUser();
+  const userContext = useUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -32,8 +32,14 @@ export function UserAuth({ onSuccess }) {
     try {
       const res = await axios.post(LOGIN_URL, { email, password });
       setMessage(res.data?.message || "Login success");
-      // Set the user ID to the email (or user ID from response)
-      updateUserId(email);
+      
+      // Save user data and token using the new login function
+      userContext.login({
+        user_id: res.data.user_id,
+        email: res.data.email,
+        access_token: res.data.access_token
+      });
+      
       onSuccess?.();
     } catch (e) {
       setIsError(true);

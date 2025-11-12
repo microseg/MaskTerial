@@ -1,15 +1,39 @@
 /**
  * API Client Utility
- * Automatically adds user_id to all API requests
+ * Automatically adds Authorization header (JWT token) to all API requests
  */
 
 const API_BASE_URL = '';
 
 /**
- * Get current user ID from session storage
+ * Get current user ID from localStorage
  */
 export function getCurrentUserId() {
-  return sessionStorage.getItem('userId') || 'test_user';
+  return localStorage.getItem('userId') || 'test_user';
+}
+
+/**
+ * Get access token from localStorage
+ */
+export function getAccessToken() {
+  return localStorage.getItem('accessToken');
+}
+
+/**
+ * Get auth headers with Bearer token or fallback to X-User-ID
+ */
+export function getAuthHeaders() {
+  const token = getAccessToken();
+  const headers = {};
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    // Fallback to X-User-ID header for backward compatibility
+    headers['X-User-ID'] = getCurrentUserId();
+  }
+  
+  return headers;
 }
 
 /**
@@ -30,11 +54,10 @@ export function createFormDataWithUser(additionalData = {}) {
 }
 
 /**
- * Create URL with user_id as query parameter
+ * Create URL with query parameters (no user_id in URL anymore)
  */
-export function createUrlWithUser(endpoint, additionalParams = {}) {
+export function createUrlWithParams(endpoint, additionalParams = {}) {
   const url = new URL(endpoint, window.location.origin);
-  url.searchParams.append('user_id', getCurrentUserId());
   
   Object.entries(additionalParams).forEach(([key, value]) => {
     if (value !== null && value !== undefined) {
@@ -45,18 +68,19 @@ export function createUrlWithUser(endpoint, additionalParams = {}) {
   return url.toString();
 }
 
+// Backward compatibility alias
+export const createUrlWithUser = createUrlWithParams;
+
 /**
- * Fetch wrapper that automatically adds user_id header
+ * Fetch wrapper that automatically adds auth headers
  */
-export async function fetchWithUser(url, options = {}) {
-  const defaultHeaders = {
-    'X-User-ID': getCurrentUserId(),
-  };
+export async function fetchWithAuth(url, options = {}) {
+  const authHeaders = getAuthHeaders();
   
   const mergedOptions = {
     ...options,
     headers: {
-      ...defaultHeaders,
+      ...authHeaders,
       ...options.headers,
     },
   };
@@ -64,20 +88,21 @@ export async function fetchWithUser(url, options = {}) {
   return fetch(url, mergedOptions);
 }
 
+// Backward compatibility alias
+export const fetchWithUser = fetchWithAuth;
+
 /**
- * POST request with automatic user_id inclusion
+ * POST request with automatic auth headers
  */
 export async function postWithUser(url, formData) {
-  // If formData doesn't have user_id, add it
+  // If formData doesn't have user_id, add it (for backward compatibility)
   if (formData instanceof FormData && !formData.has('user_id')) {
     formData.append('user_id', getCurrentUserId());
   }
   
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
     body: formData,
   });
   
@@ -85,16 +110,14 @@ export async function postWithUser(url, formData) {
 }
 
 /**
- * GET request with automatic user_id inclusion
+ * GET request with automatic auth headers
  */
 export async function getWithUser(endpoint, additionalParams = {}) {
-  const url = createUrlWithUser(endpoint, additionalParams);
+  const url = createUrlWithParams(endpoint, additionalParams);
   
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
   });
   
   return response;
@@ -118,9 +141,7 @@ export async function uploadImage(imageFile, imageName = null) {
   
   const response = await fetch('/api/upload_image', {
     method: 'POST',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
     body: formData,
   });
   
@@ -153,13 +174,11 @@ export async function getUserImages({ limit = 5, lastKey = null, status = 'activ
     params.status = status;
   }
   
-  const url = createUrlWithUser('/api/images', params);
+  const url = createUrlWithParams('/api/images', params);
   
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
   });
   
   if (!response.ok) {
@@ -180,9 +199,7 @@ export async function getImageById(imageId) {
   
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
   });
   
   if (!response.ok) {
@@ -234,9 +251,7 @@ export async function deleteImageById(imageId) {
   
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
   });
   
   if (!response.ok) {
@@ -288,9 +303,7 @@ export async function updateImageMetadata(imageId, updateData) {
   
   const response = await fetch(url, {
     method: 'PUT',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
     body: formData,
   });
   
@@ -317,9 +330,7 @@ export async function refreshDownloadUrl(imageId, expirationDays = 7) {
   
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'X-User-ID': getCurrentUserId(),
-    },
+    headers: getAuthHeaders(),
     body: formData,
   });
   

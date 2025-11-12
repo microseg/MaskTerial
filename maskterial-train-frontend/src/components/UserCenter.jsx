@@ -4,21 +4,21 @@ import styles from "./UserCenter.module.css";
 
 export function UserCenter({ userId, onLogout }) {
   const getDisplayName = () => {
-    if (userId === "guest_user") {
+    if (userId === "test_user") {
       return "Guest User";
     }
     return userId;
   };
 
   const getAvatarColor = () => {
-    if (userId === "guest_user") {
+    if (userId === "test_user") {
       return "gray";
     }
     return "blue";
   };
 
   const getAvatarText = () => {
-    if (userId === "guest_user") {
+    if (userId === "test_user") {
       return "G";
     }
     return userId.charAt(0).toUpperCase();
@@ -43,10 +43,10 @@ export function UserCenter({ userId, onLogout }) {
         <Menu.Label>User Information</Menu.Label>
         <Menu.Item>
           <Text size="sm">
-            {userId === "guest_user" ? "Guest Mode" : `User: ${userId}`}
+            {userId === "test_user" ? "Guest Mode" : `User: ${userId}`}
           </Text>
         </Menu.Item>
-        {userId === "guest_user" && (
+        {userId === "test_user" && (
           <Menu.Item>
             <Text size="xs" c="dimmed">
               Images are not saved in guest mode

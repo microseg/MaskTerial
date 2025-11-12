@@ -19,3 +19,4 @@ pyqt5
 email-validator
 boto3
 pillow
+pyjwt

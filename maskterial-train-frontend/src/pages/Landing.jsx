@@ -3,12 +3,13 @@ import { useUser } from "../contexts/UserContext";
 import { useState } from "react";
 
 export function Landing({ onEnter }) {
-  const { updateUserId } = useUser();
+  const { logout } = useUser();
   const [loading, setLoading] = useState(false);
 
   const enterAsGuest = () => {
     setLoading(true);
-    updateUserId("guest_user");
+    // Clear all authentication data and set to test_user
+    logout();
     onEnter?.("guest");
   };
 
